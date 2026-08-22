@@ -849,48 +849,93 @@ public class GrievanceEventIntel extends BaseEventIntel {
 								+ getPartnerNames(coalitionPartners) + "."
 						: ""), bad);
 		} else if (stage.id == Stage.ENFORCEMENT) {
-			if (!emboldened) {
-				setProgress(GATE_CAP);
-				CommWarsConfig.log("Grievance with " + factionId
-						+ " hit ENFORCEMENT while gated - clamped");
-				return;
-			}
-			CommWarsConfig.log("Grievance with " + factionId + " reached ENFORCEMENT");
-			// a finished strike must be resolved into consequences before
-			// anything new launches - otherwise a fast-refilling bar can
-			// clobber the outcome (truce, theft, vent) before the manager
-			// tick gets to it
-			if (strike != null && !isStrikeActive()) {
-				if (strike.isSucceeded()) {
-					onStrikeSucceeded();
-				} else if (strike.isAborted() || strike.isFailed()) {
-					onStrikeDefeated();
-				} else {
-					clearStrike();
-				}
-				// consequences (truce, vent) govern what happens next; don't
-				// also launch a fresh strike in the same breath
-				if (getProgress() >= ENFORCEMENT_PROGRESS) {
-					setProgress(CommWarsConfig.strikeResetProgress());
-				}
-				return;
-			}
-			if (!isStrikeActive()) {
-				boolean launched = EnforcementStrike.launch(this);
-				if (launched) {
-					announce(factionName + " is assembling enforcement fleets to settle the "
-							+ "dispute by force."
-							+ (isCoalitionBacked()
-								? " Coalition contingents join the operation: "
-										+ getPartnerNames(coalitionPartners) + "."
-								: ""), bad);
-				}
-				// launched or not, come off the boil; if no valid target existed
-				// (e.g. no player colonies), settle just below the ultimatum line
-				setProgress(launched ? CommWarsConfig.strikeResetProgress()
-						: ULTIMATUM_PROGRESS - 50);
-			}
+			tryLaunchEnforcement();
 		}
+	}
+
+	/**
+	 * The single guarded path to launching a strike: gate, unresolved-strike
+	 * cleanup, and the cooldown all get their say. Called when the bar
+	 * reaches 600 and re-checked by the manager while it sits there (so a
+	 * bar pinned at 600 during the cooldown fires the moment it elapses).
+	 */
+	public void tryLaunchEnforcement() {
+		if (isEnding() || isEnded()) return;
+		if (getProgress() < ENFORCEMENT_PROGRESS) return;
+
+		String factionName = Misc.ucFirst(getFaction().getDisplayNameWithArticle());
+
+		if (!emboldened) {
+			setProgress(GATE_CAP);
+			CommWarsConfig.log("Grievance with " + factionId
+					+ " hit ENFORCEMENT while gated - clamped");
+			return;
+		}
+		if (isStrikeActive()) return;
+
+		// a finished strike must be resolved into consequences before
+		// anything new launches - otherwise a fast-refilling bar can
+		// clobber the outcome (truce, theft, vent) before the manager
+		// tick gets to it
+		if (strike != null) {
+			if (strike.isSucceeded()) {
+				onStrikeSucceeded();
+			} else if (strike.isAborted() || strike.isFailed()) {
+				onStrikeDefeated();
+			} else {
+				clearStrike();
+			}
+			// consequences (truce, vent) govern what happens next; don't
+			// also launch a fresh strike in the same breath
+			if (getProgress() >= ENFORCEMENT_PROGRESS) {
+				setProgress(CommWarsConfig.strikeResetProgress());
+			}
+			return;
+		}
+
+		// boiling, but the fleets need time to reconstitute: the bar holds
+		// at the brink until the cooldown elapses (manager re-checks)
+		if (daysSinceLastStrikeEnd() < CommWarsConfig.strikeCooldownDays()) {
+			CommWarsConfig.log("Grievance with " + factionId
+					+ " at ENFORCEMENT but strike cooldown holds ("
+					+ (int) daysSinceLastStrikeEnd() + "/"
+					+ (int) CommWarsConfig.strikeCooldownDays() + " days)");
+			return;
+		}
+
+		CommWarsConfig.log("Grievance with " + factionId + " reached ENFORCEMENT");
+		boolean launched = EnforcementStrike.launch(this);
+		if (launched) {
+			announce(factionName + " is assembling enforcement fleets to settle the "
+					+ "dispute by force."
+					+ (isCoalitionBacked()
+						? " Coalition contingents join the operation: "
+								+ getPartnerNames(coalitionPartners) + "."
+						: ""), Misc.getNegativeHighlightColor());
+		}
+		// launched or not, come off the boil; if no valid target existed
+		// (e.g. no player colonies), settle just below the ultimatum line
+		setProgress(launched ? CommWarsConfig.strikeResetProgress()
+				: ULTIMATUM_PROGRESS - 50);
+	}
+
+	/**
+	 * Phase 6: the player's own hostile acts against this faction feed the
+	 * metre. Spikes are instant, can cross any threshold - including
+	 * detonating an enforcement strike - and are still subject to the
+	 * strength gate and cooldown like any other trigger.
+	 */
+	public void onPlayerRetaliation(int spike, String actDesc, MarketAPI market) {
+		if (isEnding() || isEnded()) return;
+		if (spike <= 0) return;
+		int before = getProgress();
+		CommWarsConfig.log("Player retaliation vs " + factionId + " (" + actDesc + " @ "
+				+ market.getName() + "): +" + spike + " (bar " + before + " -> "
+				+ Math.min(getMaxProgress(), before + spike) + ")");
+		announce(Misc.ucFirst(getFaction().getDisplayNameWithArticle()) + " seethes at your "
+				+ actDesc + " on " + market.getName() + " - resentment surges.",
+				Misc.getNegativeHighlightColor());
+		setProgress(before + spike);
 	}
 
 	// ---- presentation ----

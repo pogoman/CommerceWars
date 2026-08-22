@@ -106,6 +106,15 @@
 	"commwars_coalitionDropoutDays": 180,
 	"commwars_coalitionMinAnger": 200,
 
+	# Retaliation (phase 6): the player's own raids/bombardments against a
+	# faction with an active grievance spike its resentment instantly - and
+	# can trigger enforcement outright. Saturation bombardment also ripples:
+	# emboldened rivals grow hotter, weak ones are cowed out of coalitions
+	"commwars_retalRaidSpike": 50,
+	"commwars_retalTacBombSpike": 100,
+	"commwars_retalSatBombSpike": 200,
+	"commwars_atrocityPeerSpike": 100,
+
 	# Debug
 	"commwars_debugMode": false,
 	"commwars_debugLogging": false,

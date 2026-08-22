@@ -75,6 +75,9 @@ public class GrievanceManager implements EveryFrameScript {
 			updateGate(intel, active.keySet());
 			pollStrike(intel);
 			rearmEnforcement(intel);
+			// a bar pinned at 600 (cooldown, or a just-resolved strike) fires
+			// the moment its blockers clear
+			intel.tryLaunchEnforcement();
 			intel.tickCalm();
 		}
 

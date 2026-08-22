@@ -118,6 +118,13 @@ public class CommWarsConfig {
 	public static float coalitionDropoutDays()  { return f("commwars_coalitionDropoutDays"); }
 	public static int coalitionMinAnger()       { return i("commwars_coalitionMinAnger"); }
 
+	// ---- retaliation (phase 6) ----
+
+	public static int retalRaidSpike()          { return i("commwars_retalRaidSpike"); }
+	public static int retalTacBombSpike()       { return i("commwars_retalTacBombSpike"); }
+	public static int retalSatBombSpike()       { return i("commwars_retalSatBombSpike"); }
+	public static int atrocityPeerSpike()       { return i("commwars_atrocityPeerSpike"); }
+
 	// ---- debug ----
 
 	public static boolean debugMode()           { return b("commwars_debugMode", false); }

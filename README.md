@@ -54,7 +54,7 @@ Retribution and Threat Incursion (vanilla API only, LunaLib optional).
 - [x] Phase 3: item heists (marine-constrained ground ops, steal-back via raids)
 - [x] Phase 4: military threat track (arsenal rivalry causes, commission response, military-target strikes)
 - [x] Phase 5: strength gate (pooled military scores vs gateRatio x player), coalitions (mutually non-hostile aggrieved factions; mixed-roster fleets via CoalitionRaidFGI; pooled strike capacity; defeat demoralizes partners out of the pool), earned-silence endgame (gated grievances hold below the ultimatum line)
-- [ ] Phase 6: counterplay accounting (retaliation detection, deciv venting)
+- [x] Phase 6: counterplay accounting - player raids/bombardments spike the target grievance (and can trigger enforcement outright); saturation bombardment ripples (emboldened rivals spike, weak ones cowed out of coalition pools); single guarded enforcement-launch path enforcing the strike cooldown properly. Deciv venting proved emergent (live share/score math). Vanilla relations untouched by design
 
 ## Vanilla reference points (mods/.api-src)
 

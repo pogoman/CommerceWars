@@ -53,15 +53,54 @@ public class StolenItemListener implements ColonyPlayerHostileActListener {
 	@Override
 	public void reportRaidToDisruptFinished(InteractionDialogAPI dialog, MarketAPI market,
 			TempData actionData, Industry industry) {
+		reportRetaliation(market, CommWarsConfig.retalRaidSpike(), "raid");
 	}
 
 	@Override
 	public void reportTacticalBombardmentFinished(InteractionDialogAPI dialog, MarketAPI market,
 			TempData actionData) {
+		reportRetaliation(market, CommWarsConfig.retalTacBombSpike(), "bombardment");
 	}
 
 	@Override
 	public void reportSaturationBombardmentFinished(InteractionDialogAPI dialog, MarketAPI market,
 			TempData actionData) {
+		reportRetaliation(market, CommWarsConfig.retalSatBombSpike(), "atrocity");
+		atrocityRipple(market);
+	}
+
+	/** Phase 6: the player's hostile acts feed the target faction's metre. */
+	protected void reportRetaliation(MarketAPI market, int spike, String actDesc) {
+		if (spike <= 0 || market == null) return;
+		GrievanceEventIntel intel = GrievanceEventIntel.get(market.getFactionId());
+		if (intel == null) return;
+		intel.onPlayerRetaliation(spike, actDesc, market);
+	}
+
+	/**
+	 * Saturation bombardment echoes across every other active grievance:
+	 * factions strong enough to act grow hotter ("we're next - act now"),
+	 * while those too weak are cowed out of coalition pools by terror.
+	 */
+	protected void atrocityRipple(MarketAPI bombed) {
+		for (com.fs.starfarer.api.campaign.comm.IntelInfoPlugin p
+				: Global.getSector().getIntelManager().getIntel(GrievanceEventIntel.class)) {
+			GrievanceEventIntel other = (GrievanceEventIntel) p;
+			if (other.isEnding() || other.isEnded()) continue;
+			if (other.getFactionId().equals(bombed.getFactionId())) continue;
+
+			if (other.isEmboldened()) {
+				other.onPlayerRetaliation(CommWarsConfig.atrocityPeerSpike(),
+						"atrocity against " + bombed.getFaction().getDisplayName(), bombed);
+			} else {
+				CoalitionCalc.demoralize(other.getFactionId());
+				other.announce(Misc.ucFirst(other.getFaction().getDisplayNameWithArticle())
+						+ " is cowed by the atrocity at " + bombed.getName()
+						+ " - too weak to answer it, and unwilling to provoke the same fate.",
+						Misc.getPositiveHighlightColor());
+				CommWarsConfig.log("Atrocity cowed " + other.getFactionId()
+						+ " (demoralized out of coalition pools)");
+			}
+		}
 	}
 }

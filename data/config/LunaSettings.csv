@@ -50,6 +50,11 @@ commwars_gateRatio,Gate Ratio,Double,0.8,"Fraction of the player's military scor
 commwars_coalitionDropoutChance,Dropout Chance,Double,0.5,"Chance for each coalition partner to lose its stomach when a coalition strike is defeated.",0.0,1.0
 commwars_coalitionDropoutDays,Dropout Days,Double,180,"How long a demoralized faction stays out of coalition pools.",30,720
 commwars_coalitionMinAnger,Coalition Min Anger,Int,200,"A faction only lends its strength to coalition partners while its own grievance bar is at least this - settle a member below the line to buy them out of the pact.",0,590
+retalHeader,Retaliation Header,Header,Retaliation,"Your own raids and bombardments against a faction with an active grievance spike its resentment instantly - and can trigger enforcement outright (still subject to the strength gate and strike cooldown). Saturation bombardment ripples: emboldened rivals grow hotter, weak ones are cowed out of coalition pools.",,
+commwars_retalRaidSpike,Raid Spike,Int,50,"Resentment gained when you raid one of their markets.",0,300
+commwars_retalTacBombSpike,Tac Bomb Spike,Int,100,"Resentment gained when you tactically bombard one of their markets.",0,400
+commwars_retalSatBombSpike,Sat Bomb Spike,Int,200,"Resentment gained when you saturation-bombard one of their markets.",0,600
+commwars_atrocityPeerSpike,Atrocity Peer Spike,Int,100,"Resentment gained by OTHER emboldened aggrieved factions when you saturation-bombard anyone - if you did it to them, who is next?",0,400
 debugHeader,Debug Header,Header,Debug,"Development tools. Debug Mode reveals every internal number on the grievance intel screen - shares, weights, thresholds, timers.",,
 commwars_debugMode,Debug Mode,Boolean,false,"Reveal all internal stats on grievance intel screens (shares, raw weights, thresholds, timers).",,
 commwars_debugLogging,Verbose Logging,Boolean,false,"Verbose [CommWars] lines in starsector.log.",,
