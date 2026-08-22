@@ -121,6 +121,7 @@ public class CommWarsConfig {
 	public static boolean vendettaEnabled()     { return b("commwars_vendettaEnabled", true); }
 	public static int vendettaStartProgress()   { return i("commwars_vendettaStartProgress"); }
 	public static int vendettaPerMonth()        { return i("commwars_vendettaPerMonth"); }
+	public static float vendettaTempoMult()     { return f("commwars_vendettaTempoMult"); }
 	public static float gateRatio()             { return f("commwars_gateRatio"); }
 	public static float coalitionDropoutChance(){ return f("commwars_coalitionDropoutChance"); }
 	public static float coalitionDropoutDays()  { return f("commwars_coalitionDropoutDays"); }

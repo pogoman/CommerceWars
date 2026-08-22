@@ -51,7 +51,8 @@ commwars_totalWar,Total War,Boolean,false,"Strips story-critical protection from
 vendettaHeader,Vendetta Header,Header,Vendetta,"Saturation-bombing a faction converts its grievance into a permanent Blood Feud: no settlements, tribute, truces, or expiry - a fixed blood-debt drive cycles toward saturation-bombardment reprisals against your worlds, bounded only by their real military capacity and the strength gate. Ends when one side has no worlds left.",,
 commwars_vendettaEnabled,Vendetta Enabled,Boolean,true,"Sat-bombing a faction starts (or deepens) a blood feud instead of a mere resentment spike.",,
 commwars_vendettaStartProgress,Vendetta Start Progress,Int,400,"Bar value a blood feud starts at (or is raised to) when declared.",0,600
-commwars_vendettaPerMonth,Blood Debt per Month,Int,25,"Fixed monthly drive toward reprisal in a blood feud - unaffected by anything the player does.",5,100
+commwars_vendettaPerMonth,Blood Debt per Month,Int,25,"Base monthly drive toward reprisal in a blood feud.",5,100
+commwars_vendettaTempoMult,Vendetta Tempo Mult,Double,0.35,"Extra monthly drive per point of the faction's military-industrial score - great powers avenge relentlessly, broken rump states only sporadically. Cripple their military to slow (never stop) the feud.",0.0,2.0
 commwars_gateRatio,Gate Ratio,Double,0.8,"Fraction of the player's military score a faction (plus partners) must muster to press demands.",0.1,2.0
 commwars_coalitionDropoutChance,Dropout Chance,Double,0.5,"Chance for each coalition partner to lose its stomach when a coalition strike is defeated.",0.0,1.0
 commwars_coalitionDropoutDays,Dropout Days,Double,180,"How long a demoralized faction stays out of coalition pools.",30,720

@@ -117,6 +117,7 @@
 	"commwars_vendettaEnabled": true,
 	"commwars_vendettaStartProgress": 400,
 	"commwars_vendettaPerMonth": 25,
+	"commwars_vendettaTempoMult": 0.35,
 	"commwars_gateRatio": 0.8,
 	"commwars_coalitionDropoutChance": 0.5,
 	"commwars_coalitionDropoutDays": 180,

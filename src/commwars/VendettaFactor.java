@@ -26,7 +26,11 @@ public class VendettaFactor extends BaseEventFactor {
 		GrievanceEventIntel g = intel(intel);
 		if (g == null || !g.isVendetta()) return 0;
 		if (g.isAccrualSuppressed() || g.isGateCapped()) return 0;
-		return Math.round(CommWarsConfig.vendettaPerMonth() * CommWarsConfig.clockMult());
+		// fury is constant; operational tempo is capability - a great power
+		// avenges relentlessly, a broken rump state only sporadically
+		float monthly = CommWarsConfig.vendettaPerMonth()
+				+ MilitaryScore.factionScore(g.getFaction()) * CommWarsConfig.vendettaTempoMult();
+		return Math.round(monthly * CommWarsConfig.clockMult());
 	}
 
 	@Override
@@ -68,6 +72,9 @@ public class VendettaFactor extends BaseEventFactor {
 						+ "money. You saturation-bombed their world; the drive toward reprisal "
 						+ "is constant, and nothing vents it except a strike - theirs, "
 						+ "or yours.", 0f);
+				tooltip.addPara("The pace of reprisal reflects what their military-industrial "
+						+ "base can sustain: cripple it, and the feud slows - though it "
+						+ "never stops.", 10f);
 			}
 		};
 	}
