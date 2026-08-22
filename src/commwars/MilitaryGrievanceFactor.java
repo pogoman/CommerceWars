@@ -26,7 +26,7 @@ public class MilitaryGrievanceFactor extends BaseEventFactor {
 		MilitaryScore.MilCause cause = getCause(intel);
 		if (cause == null) return 0;
 		GrievanceEventIntel g = (GrievanceEventIntel) intel;
-		if (g.isAccrualSuppressed() || g.isGateCapped()) return 0;
+		if (g.isAccrualSuppressed() || g.isGateCapped() || g.isVendetta()) return 0;
 		return Math.round(cause.weight * CommWarsConfig.clockMult());
 	}
 
@@ -42,6 +42,7 @@ public class MilitaryGrievanceFactor extends BaseEventFactor {
 
 	@Override
 	public boolean shouldShow(BaseEventIntel intel) {
+		if (((GrievanceEventIntel) intel).isVendetta()) return false;
 		return getCause(intel) != null;
 	}
 

@@ -184,14 +184,17 @@ public class EnforcementStrike {
 	public static boolean launch(GrievanceEventIntel intel) {
 		List<String> contested = intel.getCauseCommodityIds();
 		boolean militaryMode = intel.isMilitaryDominant();
+		boolean vendetta = intel.isVendetta();
 
-		// at high escalation, look for an installed item worth a ground op
+		// at high escalation, look for an installed item worth a ground op -
+		// but a blood feud wants annihilation, not loot
 		HeistPlan heist = null;
-		if (intel.getEscalation() >= CommWarsConfig.heistEscalation()) {
+		if (!vendetta && intel.getEscalation() >= CommWarsConfig.heistEscalation()) {
 			heist = planHeist(intel, militaryMode, contested);
 		}
 
 		MarketAPI target = heist != null ? heist.market
+				: vendetta ? findTarget(new ArrayList<String>()) // largest player colony
 				: militaryMode ? findMilitaryTarget() : findTarget(contested);
 		MarketAPI source = findSource(intel.getFaction());
 		if (target == null || source == null) {
@@ -219,9 +222,12 @@ public class EnforcementStrike {
 		params.raidParams.allowNonHostileTargets = true;
 		params.raidParams.doNotGetSidetracked = true;
 
-		boolean tacBomb = heist == null
+		boolean tacBomb = heist == null && !vendetta
 				&& intel.getEscalation() >= CommWarsConfig.tacBombEscalation();
-		if (heist != null) {
+		if (vendetta) {
+			// the blood feud answers saturation with saturation
+			params.raidParams.setBombardment(BombardType.SATURATION);
+		} else if (heist != null) {
 			// a ground operation: breach the fortifications, take the item
 			List<String> disrupt = new ArrayList<String>();
 			if (target.getIndustry(Industries.GROUNDDEFENSES) != null) {
@@ -244,8 +250,8 @@ public class EnforcementStrike {
 			}
 		}
 
-		params.noun = "enforcement action";
-		params.forcesNoun = "enforcement forces";
+		params.noun = vendetta ? "retribution" : "enforcement action";
+		params.forcesNoun = vendetta ? "retribution forces" : "enforcement forces";
 		params.style = FleetStyle.STANDARD;
 		params.repImpact = ComplicationRepImpact.NONE;
 
@@ -302,8 +308,8 @@ public class EnforcementStrike {
 		}
 		Global.getSector().getIntelManager().addIntel(raid);
 
-		intel.setStrike(raid, target, source, tacBomb, militaryMode,
-				heist != null ? heist.industryId : null);
+		intel.setStrike(raid, target, source, tacBomb || vendetta,
+				militaryMode || vendetta, heist != null ? heist.industryId : null);
 
 		// the joint action speaks for the whole coalition: every member's
 		// ledger vents into it - reset and held until the strike resolves
@@ -316,8 +322,9 @@ public class EnforcementStrike {
 
 		CommWarsConfig.log("Enforcement strike launched: " + intel.getFactionId()
 				+ " vs " + target.getName() + " (escalation " + intel.getEscalation()
-				+ ", " + (militaryMode ? "MILITARY track, " : "trade track, ")
-				+ (heist != null
+				+ ", " + (vendetta ? "VENDETTA, " : militaryMode ? "MILITARY track, " : "trade track, ")
+				+ (vendetta ? "SATURATION BOMBARDMENT"
+					: heist != null
 					? "ITEM HEIST vs " + heist.industryId + " (marines "
 							+ (int) heist.capacity + "/" + (int) heist.neededMarines + ")"
 					: tacBomb ? "TACTICAL BOMBARDMENT" : "disruption raid") + ")");

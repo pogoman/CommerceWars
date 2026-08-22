@@ -46,7 +46,8 @@ public class CommodityGrievanceFactor extends BaseEventFactor {
 		if (cause == null) return 0;
 		if (intel instanceof GrievanceEventIntel
 				&& (((GrievanceEventIntel) intel).isAccrualSuppressed()
-						|| ((GrievanceEventIntel) intel).isGateCapped())) {
+						|| ((GrievanceEventIntel) intel).isGateCapped()
+						|| ((GrievanceEventIntel) intel).isVendetta())) {
 			return 0;
 		}
 		return Math.round(cause.weight * CommWarsConfig.clockMult());
@@ -64,6 +65,8 @@ public class CommodityGrievanceFactor extends BaseEventFactor {
 
 	@Override
 	public boolean shouldShow(BaseEventIntel intel) {
+		if (intel instanceof GrievanceEventIntel
+				&& ((GrievanceEventIntel) intel).isVendetta()) return false;
 		return getCause(intel) != null;
 	}
 

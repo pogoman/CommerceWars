@@ -84,6 +84,11 @@ public class GrievanceManager implements EveryFrameScript {
 			// the moment its blockers clear
 			intel.tryLaunchEnforcement();
 			intel.tickCalm();
+			// a blood feud ends only when nothing remains to pursue it
+			if (intel.isVendetta() && !intel.isEnding() && !intel.isEnded()
+					&& Misc.getFactionMarkets(intel.getFaction(), null).isEmpty()) {
+				intel.endVendetta();
+			}
 		}
 
 		// open new grievances for the angriest qualifying factions
@@ -104,8 +109,14 @@ public class GrievanceManager implements EveryFrameScript {
 			}
 		});
 
+		// vendettas do not count against the ordinary-grievance cap
+		int nonVendettaActive = 0;
+		for (GrievanceEventIntel intel : active.values()) {
+			if (!intel.isVendetta()) nonVendettaActive++;
+		}
+
 		for (String factionId : candidates) {
-			if (active.size() >= CommWarsConfig.maxActiveGrievances()) break;
+			if (nonVendettaActive >= CommWarsConfig.maxActiveGrievances()) break;
 			if (active.containsKey(factionId)) continue;
 			float total = totals.get(factionId);
 			if (total < CommWarsConfig.startThreshold()) continue;
@@ -120,6 +131,7 @@ public class GrievanceManager implements EveryFrameScript {
 			GrievanceEventIntel intel = new GrievanceEventIntel(factionId, all.get(factionId));
 			intel.setMilitaryCause(mil.get(factionId));
 			active.put(factionId, intel);
+			nonVendettaActive++;
 			CommWarsConfig.log("Opened grievance: " + factionId
 					+ " (total weight " + total + ")");
 		}

@@ -115,6 +115,12 @@ public class CommWarsConfig {
 	public static boolean gateEnabled()         { return b("commwars_gateEnabled", true); }
 	public static boolean deferToVanillaCrises(){ return b("commwars_deferToVanillaCrises", true); }
 	public static boolean totalWar()            { return b("commwars_totalWar", false); }
+
+	// ---- vendetta ----
+
+	public static boolean vendettaEnabled()     { return b("commwars_vendettaEnabled", true); }
+	public static int vendettaStartProgress()   { return i("commwars_vendettaStartProgress"); }
+	public static int vendettaPerMonth()        { return i("commwars_vendettaPerMonth"); }
 	public static float gateRatio()             { return f("commwars_gateRatio"); }
 	public static float coalitionDropoutChance(){ return f("commwars_coalitionDropoutChance"); }
 	public static float coalitionDropoutDays()  { return f("commwars_coalitionDropoutDays"); }

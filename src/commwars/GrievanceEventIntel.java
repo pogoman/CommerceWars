@@ -87,6 +87,7 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	protected List<String> coalitionPartners = new ArrayList<String>();
 	protected List<String> strikePartners = null;
 	protected String supportingStrikeFor = null;
+	protected boolean vendetta = false;
 
 	/** The active grievance intel for a faction, if any. */
 	public static GrievanceEventIntel get(String factionId) {
@@ -220,6 +221,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		}
 		if (getFactorOfClass(GateFactor.class) == null) {
 			addFactor(new GateFactor());
+		}
+		if (getFactorOfClass(VendettaFactor.class) == null) {
+			addFactor(new VendettaFactor());
 		}
 		// recurring tribute was replaced by one-off settlements: drop stale
 		// factor instances and pledge state from older saves
@@ -367,12 +371,56 @@ public class GrievanceEventIntel extends BaseEventIntel {
 
 	/** The vanilla colony-crisis system already speaks for this faction. */
 	public boolean isDeferredToVanillaCrisis() {
+		if (vendetta) return false; // the blood feud defers to nothing
 		return VanillaCrisis.isActiveOrPending(factionId);
 	}
 
 	/** Gated and pinned at the cap: accrual has nowhere left to go. */
 	public boolean isGateCapped() {
 		return !emboldened && getProgress() >= GATE_CAP;
+	}
+
+	// ---- vendetta: the blood feud after a saturation bombardment ----
+
+	public boolean isVendetta() {
+		return vendetta;
+	}
+
+	/**
+	 * The player saturation-bombed one of this faction's worlds: the
+	 * grievance converts permanently into a blood feud. No settlements, no
+	 * tribute, no truces, no expiry - their strikes become saturation
+	 * bombardments, bounded only by what their military-industrial base can
+	 * still field. Ends when one side has no worlds left.
+	 */
+	public void declareVendetta(MarketAPI bombedMarket) {
+		ensureFactors();
+		String bombedName = bombedMarket != null ? bombedMarket.getName() : "their world";
+		if (!vendetta) {
+			vendetta = true;
+			orders = Orders.DEFY;
+			truceStart = null;
+			truceDays = 0f;
+			setProgress(Math.max(getProgress(), CommWarsConfig.vendettaStartProgress()));
+			CommWarsConfig.log("VENDETTA declared by " + factionId
+					+ " (sat bomb of " + bombedName + ")");
+			announce(Misc.ucFirst(getFaction().getDisplayNameWithArticle())
+					+ " will never forgive the burning of " + bombedName + ". There will be "
+					+ "no notes, no ultimatums, no settlements - only retribution, whenever "
+					+ "and however they are able.", Misc.getNegativeHighlightColor());
+		} else {
+			// another atrocity feeds the same feud
+			escalation++;
+			setProgress(Math.max(getProgress(), CommWarsConfig.vendettaStartProgress()));
+			CommWarsConfig.log("Vendetta with " + factionId + " deepened by another atrocity ("
+					+ bombedName + "), escalation now " + escalation);
+		}
+	}
+
+	/** The feud ends only when there is nothing left to avenge it with. */
+	public void endVendetta() {
+		CommWarsConfig.log("Vendetta with " + factionId + " ends: no worlds remain to pursue it");
+		endAfterDelay();
 	}
 
 	public String getSupportingStrikeFor() {
@@ -421,9 +469,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		}
 	}
 
-	/** Responding (pledging tribute) is only possible before fleets fly. */
+	/** Responding (settlements) is only possible before fleets fly - and never in a blood feud. */
 	public boolean canRespond() {
-		return isUltimatumReached() && !isStrikeActive() && !isEnding() && !isEnded();
+		return !vendetta && isUltimatumReached() && !isStrikeActive() && !isEnding() && !isEnded();
 	}
 
 	public GenericRaidFGI getStrike() {
@@ -658,10 +706,15 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		CommWarsConfig.log("Enforcement strike by " + factionId + " on "
 				+ (strikeTarget != null ? strikeTarget.getName() : "?") + " SUCCEEDED");
 
-		// they made their point: accrual freezes for a while - for the whole bloc
-		truceStart = Global.getSector().getClock().getTimestamp();
-		truceDays = CommWarsConfig.truceDaysAfterStrike();
-		releasePartners(true);
+		// they made their point: accrual freezes for a while - for the whole
+		// bloc. Except in a blood feud: there are no points, only reprisals
+		if (!vendetta) {
+			truceStart = Global.getSector().getClock().getTimestamp();
+			truceDays = CommWarsConfig.truceDaysAfterStrike();
+			releasePartners(true);
+		} else {
+			releasePartners(false);
+		}
 
 		// normally the theft fired when the raid connected (checkStrikeRaidHit);
 		// this is the fallback in case resolution arrives first
@@ -671,13 +724,20 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		String sourceName = strikeSource != null ? strikeSource.getName() : null;
 		clearStrike();
 
-		String text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
-				+ " enforcement action against " + targetName + " has run its course.";
-		if (lootSummary != null) {
-			text += " Seized from local stockpiles: " + lootSummary
-					+ (sourceName != null ? " - carried off to " + sourceName + "." : ".");
+		String text;
+		if (vendetta) {
+			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
+					+ "'s retribution fleets have done their work at " + targetName + ". "
+					+ "The blood debt is not settled - it is merely fed.";
+		} else {
+			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
+					+ " enforcement action against " + targetName + " has run its course.";
+			if (lootSummary != null) {
+				text += " Seized from local stockpiles: " + lootSummary
+						+ (sourceName != null ? " - carried off to " + sourceName + "." : ".");
+			}
+			text += " A grudging commercial truce takes hold - for now.";
 		}
-		text += " A grudging commercial truce takes hold - for now.";
 		announce(text, Misc.getNegativeHighlightColor());
 	}
 
@@ -752,6 +812,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 
 	/** Called every manager tick; ends the grievance after sustained total calm. */
 	public void tickCalm() {
+		if (vendetta) {
+			calmSince = null;
+			return; // blood feuds do not cool
+		}
 		boolean calm = !hasCauses() && getProgress() <= 0;
 		if (!calm) {
 			calmSince = null;
@@ -824,6 +888,12 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	protected void notifyStageReached(EventStageData stage) {
 		String factionName = Misc.ucFirst(getFaction().getDisplayNameWithArticle());
 		Color bad = Misc.getNegativeHighlightColor();
+
+		if (vendetta && (stage.id == Stage.WARNING || stage.id == Stage.ULTIMATUM)) {
+			// no diplomacy in a blood feud - the bar just climbs toward reprisal
+			CommWarsConfig.log("Vendetta with " + factionId + " passed " + stage.id);
+			return;
+		}
 
 		if (stage.id == Stage.WARNING) {
 			CommWarsConfig.log("Grievance with " + factionId + " reached WARNING");
@@ -917,12 +987,19 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		CommWarsConfig.log("Grievance with " + factionId + " reached ENFORCEMENT");
 		boolean launched = EnforcementStrike.launch(this);
 		if (launched) {
-			announce(factionName + " is assembling enforcement fleets to settle the "
-					+ "dispute by force."
-					+ (isCoalitionBacked()
-						? " Coalition contingents join the operation: "
-								+ getPartnerNames(coalitionPartners) + "."
-						: ""), Misc.getNegativeHighlightColor());
+			String text;
+			if (vendetta) {
+				text = factionName + " has dispatched retribution fleets. Saturation "
+						+ "bombardment of your worlds is their sole intent.";
+			} else {
+				text = factionName + " is assembling enforcement fleets to settle the "
+						+ "dispute by force.";
+			}
+			if (isCoalitionBacked()) {
+				text += " Coalition contingents join the operation: "
+						+ getPartnerNames(coalitionPartners) + ".";
+			}
+			announce(text, Misc.getNegativeHighlightColor());
 		}
 		// launched or not, come off the boil; if no valid target existed
 		// (e.g. no player colonies), settle just below the ultimatum line
@@ -953,6 +1030,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 
 	@Override
 	public String getName() {
+		if (vendetta) {
+			return "Blood Feud - " + getFaction().getDisplayName();
+		}
 		String kind;
 		if (isMilitaryDominant()) {
 			kind = "Military Grievance";
@@ -1072,6 +1152,29 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		boolean plural = "are".equals(faction.getDisplayNameIsOrAre());
 		String hasOrHave = faction.getDisplayNameHasOrHave();
 		String isOrAre = faction.getDisplayNameIsOrAre();
+
+		if (vendetta) {
+			if (isStrikeActive()) {
+				info.addPara("Retribution fleets are underway. Saturation bombardment of your "
+						+ "worlds is their sole intent.", opad);
+			} else {
+				info.addPara(factionNameUc + " " + (plural ? "remember" : "remembers")
+						+ " what you burned. There will be no notes, no ultimatums, no "
+						+ "settlements - only retribution, whenever and however "
+						+ (plural ? "they" : "it") + " " + isOrAre + " able. The feud ends "
+						+ "when one side has no worlds left.", opad);
+				if (!emboldened) {
+					info.addPara("Broken as they are, the means are gone - but hatred outlives "
+							+ "means. Should they rebuild, they will come.", opad,
+							Misc.getPositiveHighlightColor(), h, "");
+				}
+			}
+			if (escalation > 0) {
+				info.addPara("Reprisals repelled so far: %s. Each defeat only deepens the debt.",
+						opad, h, "" + escalation);
+			}
+			return;
+		}
 
 		boolean trade = !causes.isEmpty();
 		boolean military = militaryCause != null;
@@ -1278,10 +1381,12 @@ public class GrievanceEventIntel extends BaseEventIntel {
 					+ (strike.isSucceeded() ? " (succeeded)"
 						: strike.isAborted() || strike.isFailed() ? " (defeated)" : " (active)");
 		}
-		info.addPara("strike: %s | ultimatumReached: %s | supporting: %s | vanillaCrisis: %s", 3f, h,
+		info.addPara("strike: %s | ultimatumReached: %s | supporting: %s | vanillaCrisis: %s | "
+				+ "vendetta: %s", 3f, h,
 				strikeState, "" + isUltimatumReached(),
 				supportingStrikeFor == null ? "none" : supportingStrikeFor,
-				"" + isDeferredToVanillaCrisis());
+				"" + isDeferredToVanillaCrisis(),
+				"" + vendetta);
 
 		info.addPara("faction milScore: %s (capacity %s) | player milScore: %s", 3f, h,
 				"" + (int) MilitaryScore.factionScore(getFaction()),

@@ -48,6 +48,10 @@ gateHeader,Gate Header,Header,Strength Gate & Coalitions,"A faction only presses
 commwars_gateEnabled,Strength Gate Enabled,Boolean,true,"Master toggle for the strength gate. Off = factions press demands regardless of relative power (pre-Phase-5 behavior).",,
 commwars_deferToVanillaCrises,Defer to Colony Crises,Boolean,true,"A faction with an active or building vanilla colony crisis gets no Commerce Wars grievance - no double jeopardy (e.g. Sindria and fuel). Existing grievances freeze until their crisis passes.",,
 commwars_totalWar,Total War,Boolean,false,"Strips story-critical protection from every market: any world can be saturation-bombed down (size -1 per bombardment) and destroyed at size 4 or below - factions can be entirely eliminated, with elimination announced. WARNING: questlines anchored on destroyed worlds will strand.",,
+vendettaHeader,Vendetta Header,Header,Vendetta,"Saturation-bombing a faction converts its grievance into a permanent Blood Feud: no settlements, tribute, truces, or expiry - a fixed blood-debt drive cycles toward saturation-bombardment reprisals against your worlds, bounded only by their real military capacity and the strength gate. Ends when one side has no worlds left.",,
+commwars_vendettaEnabled,Vendetta Enabled,Boolean,true,"Sat-bombing a faction starts (or deepens) a blood feud instead of a mere resentment spike.",,
+commwars_vendettaStartProgress,Vendetta Start Progress,Int,400,"Bar value a blood feud starts at (or is raised to) when declared.",0,600
+commwars_vendettaPerMonth,Blood Debt per Month,Int,25,"Fixed monthly drive toward reprisal in a blood feud - unaffected by anything the player does.",5,100
 commwars_gateRatio,Gate Ratio,Double,0.8,"Fraction of the player's military score a faction (plus partners) must muster to press demands.",0.1,2.0
 commwars_coalitionDropoutChance,Dropout Chance,Double,0.5,"Chance for each coalition partner to lose its stomach when a coalition strike is defeated.",0.0,1.0
 commwars_coalitionDropoutDays,Dropout Days,Double,180,"How long a demoralized faction stays out of coalition pools.",30,720

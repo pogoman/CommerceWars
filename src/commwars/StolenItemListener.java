@@ -65,7 +65,19 @@ public class StolenItemListener implements ColonyPlayerHostileActListener {
 	@Override
 	public void reportSaturationBombardmentFinished(InteractionDialogAPI dialog, MarketAPI market,
 			TempData actionData) {
-		reportRetaliation(market, CommWarsConfig.retalSatBombSpike(), "atrocity");
+		// convert, don't stack: sat-bombing a faction starts (or deepens) a
+		// blood feud rather than spiking the ordinary grievance
+		if (CommWarsConfig.vendettaEnabled() && market != null
+				&& market.getFaction() != null
+				&& !market.getFaction().isPlayerFaction()) {
+			GrievanceEventIntel intel = GrievanceEventIntel.get(market.getFactionId());
+			if (intel == null) {
+				intel = new GrievanceEventIntel(market.getFactionId(), null);
+			}
+			intel.declareVendetta(market);
+		} else {
+			reportRetaliation(market, CommWarsConfig.retalSatBombSpike(), "atrocity");
+		}
 		atrocityRipple(market);
 	}
 

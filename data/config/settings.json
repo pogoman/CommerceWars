@@ -108,6 +108,15 @@
 	# destroyed at size 4 or below - factions can be entirely eliminated.
 	# WARNING: questlines anchored on destroyed worlds will strand
 	"commwars_totalWar": false,
+
+	# Vendetta: saturation-bombing a faction converts its grievance into a
+	# permanent blood feud - no settlements, no truces, no expiry; their
+	# strikes become saturation bombardments (still bounded by their real
+	# military capacity and the strength gate). Ends only when one side has
+	# no worlds left
+	"commwars_vendettaEnabled": true,
+	"commwars_vendettaStartProgress": 400,
+	"commwars_vendettaPerMonth": 25,
 	"commwars_gateRatio": 0.8,
 	"commwars_coalitionDropoutChance": 0.5,
 	"commwars_coalitionDropoutDays": 180,

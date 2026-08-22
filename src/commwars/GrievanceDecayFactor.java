@@ -18,6 +18,10 @@ public class GrievanceDecayFactor extends BaseEventFactor {
 
 	@Override
 	public int getProgress(BaseEventIntel intel) {
+		if (intel instanceof GrievanceEventIntel
+				&& ((GrievanceEventIntel) intel).isVendetta()) {
+			return 0; // blood feuds do not cool
+		}
 		if (intel instanceof GrievanceEventIntel && !((GrievanceEventIntel) intel).hasCauses()) {
 			return -Math.round(CommWarsConfig.decayPerMonth() * CommWarsConfig.clockMult());
 		}
