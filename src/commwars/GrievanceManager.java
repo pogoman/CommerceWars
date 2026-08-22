@@ -104,6 +104,13 @@ public class GrievanceManager implements EveryFrameScript {
 			if (active.containsKey(factionId)) continue;
 			float total = totals.get(factionId);
 			if (total < CommWarsConfig.startThreshold()) continue;
+			// one campaign of coercion at a time: their vanilla colony crisis
+			// already speaks for them
+			if (VanillaCrisis.isActiveOrPending(factionId)) {
+				CommWarsConfig.log("Skipping grievance for " + factionId
+						+ ": vanilla colony crisis active/pending");
+				continue;
+			}
 
 			GrievanceEventIntel intel = new GrievanceEventIntel(factionId, all.get(factionId));
 			intel.setMilitaryCause(mil.get(factionId));

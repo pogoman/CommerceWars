@@ -361,7 +361,13 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	 * partner's strike - the joint action speaks for every member's grievance.
 	 */
 	public boolean isAccrualSuppressed() {
-		return isInTruce() || isStrikeActive() || supportingStrikeFor != null;
+		return isInTruce() || isStrikeActive() || supportingStrikeFor != null
+				|| isDeferredToVanillaCrisis();
+	}
+
+	/** The vanilla colony-crisis system already speaks for this faction. */
+	public boolean isDeferredToVanillaCrisis() {
+		return VanillaCrisis.isActiveOrPending(factionId);
 	}
 
 	/** Gated and pinned at the cap: accrual has nowhere left to go. */
@@ -871,6 +877,11 @@ public class GrievanceEventIntel extends BaseEventIntel {
 					+ " hit ENFORCEMENT while gated - clamped");
 			return;
 		}
+		if (isDeferredToVanillaCrisis()) {
+			CommWarsConfig.log("Grievance with " + factionId
+					+ " at ENFORCEMENT but deferred to vanilla colony crisis");
+			return;
+		}
 		if (isStrikeActive()) return;
 
 		// a finished strike must be resolved into consequences before
@@ -1267,9 +1278,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 					+ (strike.isSucceeded() ? " (succeeded)"
 						: strike.isAborted() || strike.isFailed() ? " (defeated)" : " (active)");
 		}
-		info.addPara("strike: %s | ultimatumReached: %s | supporting: %s", 3f, h,
+		info.addPara("strike: %s | ultimatumReached: %s | supporting: %s | vanillaCrisis: %s", 3f, h,
 				strikeState, "" + isUltimatumReached(),
-				supportingStrikeFor == null ? "none" : supportingStrikeFor);
+				supportingStrikeFor == null ? "none" : supportingStrikeFor,
+				"" + isDeferredToVanillaCrisis());
 
 		info.addPara("faction milScore: %s (capacity %s) | player milScore: %s", 3f, h,
 				"" + (int) MilitaryScore.factionScore(getFaction()),

@@ -113,6 +113,7 @@ public class CommWarsConfig {
 	// ---- strength gate & coalitions ----
 
 	public static boolean gateEnabled()         { return b("commwars_gateEnabled", true); }
+	public static boolean deferToVanillaCrises(){ return b("commwars_deferToVanillaCrises", true); }
 	public static float gateRatio()             { return f("commwars_gateRatio"); }
 	public static float coalitionDropoutChance(){ return f("commwars_coalitionDropoutChance"); }
 	public static float coalitionDropoutDays()  { return f("commwars_coalitionDropoutDays"); }

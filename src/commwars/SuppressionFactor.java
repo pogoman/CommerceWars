@@ -36,6 +36,9 @@ public class SuppressionFactor extends BaseEventFactor {
 		if (g.getSupportingStrikeFor() != null) {
 			return "Joint enforcement underway";
 		}
+		if (g.isDeferredToVanillaCrisis()) {
+			return "Deferred: colony crisis takes precedence";
+		}
 		return "Post-enforcement truce";
 	}
 
@@ -75,6 +78,10 @@ public class SuppressionFactor extends BaseEventFactor {
 							+ ". The joint strike speaks for every member's grievance - their "
 							+ "own ledger was vented into it and holds until the outcome is "
 							+ "known.", 0f);
+				} else if (g.isDeferredToVanillaCrisis()) {
+					tooltip.addPara("This faction is already pressuring your colonies through a "
+							+ "colony crisis - one campaign of coercion at a time. The grievance "
+							+ "is held in abeyance until their crisis passes.", 0f);
 				} else {
 					tooltip.addPara("A recent enforcement action made its point. Resentment from export "
 							+ "competition is frozen for another %s days.",

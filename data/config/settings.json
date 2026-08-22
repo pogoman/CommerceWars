@@ -101,6 +101,7 @@
 	# ultimatum line. Defeating a coalition strike can demoralize partners
 	# out of the pool for a while
 	"commwars_gateEnabled": true,
+	"commwars_deferToVanillaCrises": true,
 	"commwars_gateRatio": 0.8,
 	"commwars_coalitionDropoutChance": 0.5,
 	"commwars_coalitionDropoutDays": 180,
