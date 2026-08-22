@@ -1,0 +1,116 @@
+{
+	# Commerce Wars - fallback values when LunaLib is not enabled
+
+	# Master switch and clock
+	"commwars_enabled": true,
+	"commwars_tickDays": 7,
+
+	# Grievance detection: when does a faction consider you a threat to its
+	# export business on a commodity?
+	#  - your sector export share must be at least minPlayerShare percent
+	#  - the aggrieved faction must hold at least minFactionShare percent
+	#  - the faction must be among the top topProducers producers (not counting you)
+	#  - your share must be at least noticeFraction of theirs
+	"commwars_minPlayerShare": 20,
+	"commwars_minFactionShare": 10,
+	"commwars_topProducers": 3,
+	"commwars_noticeFraction": 0.5,
+
+	# Resentment accrual (event bar runs 0-600; warning at 200, ultimatum at
+	# 400, enforcement at 600). Monthly progress per contested commodity is
+	# weightMult * (yourShare / theirShare), capped per commodity.
+	"commwars_weightMult": 4.0,
+	"commwars_maxMonthlyPerCommodity": 10,
+
+	# A grievance intel entry opens when a faction's total monthly resentment
+	# reaches startThreshold; at most maxActiveGrievances are open sector-wide
+	# (the angriest factions win the slots)
+	"commwars_startThreshold": 5.0,
+	"commwars_maxActiveGrievances": 3,
+
+	# Cooling off: monthly drain while a faction has no active causes against
+	# you, and days of total calm (no causes, bar at zero) before the
+	# grievance is dropped entirely
+	"commwars_decayPerMonth": 25,
+	"commwars_endAfterCalmDays": 60,
+
+	# Settlements: one-off payments buy down accumulated resentment. A full
+	# settlement from max resentment (600) costs settleMonths x your monthly
+	# contested export income, with a floor; partial payments price per point
+	# off the same rate
+	"commwars_settleMonths": 6,
+	"commwars_settleMinimum": 20000,
+	"commwars_settleMilPerScore": 800,
+
+	# Military track: factions grow uneasy when the player's
+	# military-industrial score (see debug screen) rivals their own.
+	# Suppressed while commissioned with that faction; resigning the
+	# commission spikes resentment
+	"commwars_milNoticeFraction": 0.6,
+	"commwars_milMinPlayerScore": 30,
+	"commwars_milWeightMult": 6.0,
+	"commwars_maxMonthlyMilitary": 15,
+	"commwars_commissionLapseSpike": 100,
+
+	# Enforcement strikes (launched when the bar hits 600). Difficulty =
+	# base * (1 + escalation * escalationMult), capped. Each defeated strike
+	# raises escalation by one. At tacBombEscalation and above, strikes
+	# switch from disruption raids to tactical bombardment. On a successful
+	# strike, up to stealFraction of contested commodities in the target's
+	# storage are carried off, and a truce (accrual frozen) follows
+	"commwars_strikeBaseDifficulty": 20,
+	"commwars_strikeEscalationMult": 0.5,
+	"commwars_strikeMaxDifficulty": 150,
+
+	# Grounded scaling: strikes aim to beat the target's actual defenses
+	# (patrols + station strength x overmatch, converted to difficulty via
+	# strengthPerDifficulty), but are capped by the faction's real
+	# military-industrial capability (score x capacityMult) - no magic fleets
+	"commwars_overmatch": 1.25,
+	"commwars_strengthPerDifficulty": 12,
+	"commwars_capacityMult": 0.75,
+	"commwars_strikeResetProgress": 300,
+	"commwars_strikeDefeatReset": 200,
+	"commwars_strikeCooldownDays": 60,
+	"commwars_truceDaysAfterStrike": 120,
+	"commwars_tacBombEscalation": 1,
+	"commwars_stealFraction": 0.3,
+
+	# Plundered goods depress the raided market's availability of those
+	# commodities for a while - a real, visible econ effect on top of the
+	# raid's industry disruption
+	"commwars_plunderDays": 60,
+	"commwars_plunderPenalty": 2,
+
+	# Item heists: at high escalation, strikes go after installed items
+	# (nanoforge, synchrotron...) in grievance-relevant industries. A heist is
+	# a ground operation - it targets ground defenses and needs marines
+	# (defender strength x overmatch), constrained by the faction's actual
+	# marine production (production units x marinesPerSupply). Stolen items go
+	# somewhere real and can be raided back
+	"commwars_heistEscalation": 2,
+	"commwars_heistOvermatch": 1.5,
+	"commwars_marinesPerSupply": 150,
+	"commwars_heistMusterDays": 45,
+	"commwars_heistMusterPenalty": 2,
+
+	# Strength gate: a faction only presses demands (ultimatum/enforcement)
+	# while its military-industrial score - pooled with any coalition partners
+	# it can rally (mutually non-hostile aggrieved factions) - is at least
+	# gateRatio x the player's score. Too weak: the bar holds below the
+	# ultimatum line. Defeating a coalition strike can demoralize partners
+	# out of the pool for a while
+	"commwars_gateEnabled": true,
+	"commwars_gateRatio": 0.8,
+	"commwars_coalitionDropoutChance": 0.5,
+	"commwars_coalitionDropoutDays": 180,
+	"commwars_coalitionMinAnger": 200,
+
+	# Debug
+	"commwars_debugMode": false,
+	"commwars_debugLogging": false,
+	"commwars_debugFastClock": false,
+	"commwars_debugForceGrievance": false,
+	"commwars_debugForceUltimatum": false,
+	"commwars_debugForceStrike": false,
+}

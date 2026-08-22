@@ -1,0 +1,59 @@
+fieldID,fieldName,fieldType,defaultValue,fieldDescription,minValue,maxValue
+detectHeader,Detection Header,Header,Grievance Detection,"When does a faction consider your polity a threat to its export business? All share values are sector export market shares as shown in the commodity info screens.",,
+commwars_enabled,Commerce Wars Enabled,Boolean,true,"Master switch. Turning this off freezes all grievances (existing intel entries remain but stop accruing).",,
+commwars_tickDays,Days per Tick,Double,7,"How often market shares are re-checked and grievances updated.",1,60
+commwars_minPlayerShare,Min Player Share (percent),Int,20,"Your export share of a commodity must be at least this to draw any attention.",1,100
+commwars_minFactionShare,Min Faction Share (percent),Int,10,"A faction only cares about commodities where it holds at least this share - a marginal producer is not a real competitor.",1,100
+commwars_topProducers,Top Producers,Int,3,"The faction must be among this many top producers of the commodity (not counting you) to hold a grievance over it.",1,10
+commwars_noticeFraction,Notice Fraction,Double,0.5,"Your share must be at least this fraction of the faction's own share before they notice you. Also the compliance target: an ultimatum is satisfied when your share falls back below this line.",0.1,2.0
+accrualHeader,Accrual Header,Header,Resentment,"The grievance bar runs 0-600: diplomatic warning at 200, formal ultimatum at 400, enforcement at 600. Monthly progress per contested commodity is weightMult x (your share / their share), capped.",,
+commwars_weightMult,Weight Multiplier,Double,4.0,"Scales how fast resentment accrues from each contested commodity.",0.5,30
+commwars_maxMonthlyPerCommodity,Max Monthly per Commodity,Int,10,"Cap on monthly resentment from any single commodity.",1,50
+commwars_startThreshold,Start Threshold,Double,5.0,"A grievance intel entry opens when a faction's total monthly resentment reaches this.",1,50
+commwars_maxActiveGrievances,Max Active Grievances,Int,3,"At most this many grievances are open sector-wide at once - the angriest factions win the slots.",1,10
+commwars_decayPerMonth,Decay per Month,Int,25,"Monthly drain on the bar while the faction has no active causes against you (you complied, or your dominance lapsed).",1,200
+commwars_endAfterCalmDays,End After Calm Days,Double,60,"Days of total calm (no causes, bar at zero) before a grievance is dropped and the intel entry ends.",10,720
+settleHeader,Settlement Header,Header,Settlements,"At the ultimatum stage the faction accepts one-off settlement payments that buy down accumulated resentment - partial installments or a full settlement that clears the bar. Money is taken up front. The dispute itself remains as long as your dominance does.",,
+commwars_settleMonths,Full Settlement Months,Double,6,"A full settlement from max resentment (600) costs this many months of your contested export income; partial payments price per point off the same rate.",0.5,24
+commwars_settleMinimum,Settlement Minimum,Int,20000,"Floor on the full-settlement cost in credits.",0,500000
+commwars_settleMilPerScore,Military Settlement per Score,Double,800,"For military grievances, the full-settlement basis is your military-industrial score times this - reparations scale with the arsenal they fear.",0,10000
+milHeader,Military Header,Header,Military Track,"Factions grow uneasy when your military-industrial score (market sizes + patrol/military/command structures + stations + war industry; see Debug Mode) rivals their own. Demands: downgrade, settle, or take a commission with them (suppresses their concern while you serve; resigning spikes resentment). Military-track strikes target your most militarized colony.",,
+commwars_milNoticeFraction,Military Notice Fraction,Double,0.6,"Your military score must reach this fraction of a faction's own before they grow uneasy.",0.1,2.0
+commwars_milMinPlayerScore,Min Player Military Score,Int,30,"Below this military score, nobody considers your arsenal worth an ultimatum.",0,300
+commwars_milWeightMult,Military Weight Mult,Double,6.0,"Scales how fast military resentment accrues (mult x yourScore / theirScore).",0.5,30
+commwars_maxMonthlyMilitary,Max Monthly Military,Int,15,"Cap on monthly resentment from the military cause.",1,60
+commwars_commissionLapseSpike,Commission Lapse Spike,Int,100,"Resentment gained instantly when you resign or lose a commission that was holding a military grievance at bay.",0,300
+strikeHeader,Enforcement Header,Header,Enforcement,"When the bar hits 600 the faction launches an enforcement strike at your top producer of the contested commodities. Difficulty = base x (1 + escalation x mult). Each defeated strike raises escalation. At the escalation threshold, strikes switch from disruption raids to tactical bombardment. Successful strikes steal contested commodities from the target's storage and are followed by a truce.",,
+commwars_strikeBaseDifficulty,Strike Base Difficulty,Double,20,"Minimum statement-force budget of an enforcement strike (10 = roughly one full-size fleet). Actual budget aims to overmatch the target's defenses, escalates with defiance, and is capped by the faction's military-industrial capacity.",10,300
+commwars_overmatch,Overmatch Factor,Double,1.25,"Strikes aim for this multiple of the target system's defense strength (patrols + battlestation) - enough to ensure victory, not a token gesture.",1.0,4.0
+commwars_strengthPerDifficulty,Strength per Difficulty,Double,12,"Conversion between measured fleet strength and strike difficulty points. Higher = smaller strikes for the same defenses. Tune with Debug Mode's strike math line.",1,50
+commwars_capacityMult,Capacity Multiplier,Double,0.75,"Fraction of a faction's military-industrial score it will commit to one enforcement strike. Their infrastructure (bases, stations, war industry - disrupted structures do not count) is the hard ceiling: no magic fleets.",0.1,3.0
+commwars_strikeEscalationMult,Strike Escalation Mult,Double,0.5,"Difficulty multiplier gained per escalation level (defeated strike).",0.0,3.0
+commwars_strikeMaxDifficulty,Strike Max Difficulty,Double,150,"Hard cap on enforcement strike difficulty.",10,500
+commwars_strikeResetProgress,Post-Strike Reset,Int,300,"Bar value the grievance resets to when a strike launches.",0,590
+commwars_strikeDefeatReset,Defeat Reset,Int,200,"Bar value the grievance falls to when you defeat an enforcement strike - the setback is real, and resentment must climb all the way back before they try again.",0,590
+commwars_strikeCooldownDays,Strike Cooldown Days,Double,60,"Minimum days after a strike resolves (win or lose) before the same faction can launch another, no matter how fast the bar refills.",0,720
+commwars_truceDaysAfterStrike,Truce Days,Double,120,"Days of frozen accrual after a successful enforcement strike (they made their point).",0,720
+commwars_tacBombEscalation,Tac Bomb Escalation,Int,1,"Escalation level at which strikes switch from disruption raids to tactical bombardment.",0,10
+commwars_stealFraction,Steal Fraction,Double,0.3,"Fraction of contested commodities in the target colony's resource stockpiles and storage carried off by a successful strike. The loot lands in the source market's open market - visible, and buyable back.",0.0,1.0
+commwars_plunderDays,Plunder Effect Days,Double,60,"How long plundered commodities suffer an availability penalty on the raided market (a real econ effect on top of the raid's industry disruption).",0,365
+commwars_plunderPenalty,Plunder Penalty,Int,2,"Size of the availability penalty on plundered commodities (in supply units, like a shortage).",0,10
+heistHeader,Heist Header,Header,Item Heists,"At high escalation, strikes go after installed items (nanoforge, synchrotron...) in grievance-relevant industries. A heist is a ground operation: it targets ground defenses and heavy batteries, and needs marines - defender strength x overmatch - constrained by the faction's actual marine production. Stolen items are re-installed on the faction's own markets and can be raided back.",,
+commwars_heistEscalation,Heist Escalation,Int,2,"Escalation level at which strikes attempt item heists (if a stealable item exists and they can muster the marines).",0,10
+commwars_heistOvermatch,Heist Overmatch,Double,1.5,"Marines required = target ground defender strength x this.",1.0,4.0
+commwars_marinesPerSupply,Marines per Supply Unit,Double,150,"Converts a faction's marine production (in supply units) into marines it can muster for one operation.",10,1000
+commwars_heistMusterDays,Muster Effect Days,Double,45,"How long the faction's marine availability is visibly depressed at its producing markets after mustering a heist.",0,365
+commwars_heistMusterPenalty,Muster Penalty,Int,2,"Size of the marine availability penalty while mustered.",0,10
+gateHeader,Gate Header,Header,Strength Gate & Coalitions,"A faction only presses demands while its military-industrial score - pooled with coalition partners (mutually non-hostile aggrieved factions) - reaches gateRatio x yours. Too weak: resentment simmers below the ultimatum line ('Deterred by your strength'). Coalition strikes field mixed fleets; defeating one can demoralize partners out of the pool. Outgrow every plausible coalition and the demands stop: earned silence.",,
+commwars_gateEnabled,Strength Gate Enabled,Boolean,true,"Master toggle for the strength gate. Off = factions press demands regardless of relative power (pre-Phase-5 behavior).",,
+commwars_gateRatio,Gate Ratio,Double,0.8,"Fraction of the player's military score a faction (plus partners) must muster to press demands.",0.1,2.0
+commwars_coalitionDropoutChance,Dropout Chance,Double,0.5,"Chance for each coalition partner to lose its stomach when a coalition strike is defeated.",0.0,1.0
+commwars_coalitionDropoutDays,Dropout Days,Double,180,"How long a demoralized faction stays out of coalition pools.",30,720
+commwars_coalitionMinAnger,Coalition Min Anger,Int,200,"A faction only lends its strength to coalition partners while its own grievance bar is at least this - settle a member below the line to buy them out of the pact.",0,590
+debugHeader,Debug Header,Header,Debug,"Development tools. Debug Mode reveals every internal number on the grievance intel screen - shares, weights, thresholds, timers.",,
+commwars_debugMode,Debug Mode,Boolean,false,"Reveal all internal stats on grievance intel screens (shares, raw weights, thresholds, timers).",,
+commwars_debugLogging,Verbose Logging,Boolean,false,"Verbose [CommWars] lines in starsector.log.",,
+commwars_debugFastClock,Fast Clock (10x),Boolean,false,"Multiplies all resentment accrual by 10 for rapid testing.",,
+commwars_debugForceGrievance,Force Grievance,Boolean,false,"If no grievance is active, opens one against the best candidate faction on the next tick, ignoring the start threshold. Great for seeing the intel screen without an export empire.",,
+commwars_debugForceUltimatum,Force Ultimatum,Boolean,false,"Every tick, jumps the angriest active grievance to the ultimatum stage. Toggle off after use.",,
+commwars_debugForceStrike,Force Strike,Boolean,false,"Every tick, pushes the angriest active grievance to the enforcement stage, launching a strike if none is active. Toggle off after use.",,
