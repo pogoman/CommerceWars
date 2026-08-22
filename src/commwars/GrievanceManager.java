@@ -61,6 +61,11 @@ public class GrievanceManager implements EveryFrameScript {
 
 		if (!CommWarsConfig.enabled()) return;
 
+		if (CommWarsConfig.totalWar()) {
+			stripStoryCritical();
+		}
+		trackEliminations();
+
 		Map<String, List<ShareTracker.Cause>> all = ShareTracker.compute();
 		Map<String, MilitaryScore.MilCause> mil = computeMilitaryCauses();
 		Map<String, GrievanceEventIntel> active = getActiveGrievances();
@@ -123,6 +128,67 @@ public class GrievanceManager implements EveryFrameScript {
 
 		if (CommWarsConfig.debugLogging()) {
 			logTickSummary(totals, active);
+		}
+	}
+
+	/**
+	 * Total War: strip the story-critical protection from every market, so
+	 * any world can be bombed down and destroyed. The vanilla lifecycle
+	 * plugin and active missions re-apply the flags (on load and mid-game),
+	 * so this runs every tick rather than once.
+	 */
+	protected void stripStoryCritical() {
+		int stripped = 0;
+		for (com.fs.starfarer.api.campaign.econ.MarketAPI market
+				: Global.getSector().getEconomy().getMarketsCopy()) {
+			if (Misc.isStoryCritical(market)) {
+				market.getMemoryWithoutUpdate().unset(
+						com.fs.starfarer.api.impl.campaign.ids.MemFlags.STORY_CRITICAL);
+				stripped++;
+			}
+		}
+		if (stripped > 0) {
+			CommWarsConfig.log("Total War: stripped story-critical protection from "
+					+ stripped + " market(s)");
+		}
+	}
+
+	/**
+	 * Announce when a faction that held markets loses its last one - however
+	 * that came to pass.
+	 */
+	@SuppressWarnings("unchecked")
+	protected void trackEliminations() {
+		Object val = Global.getSector().getPersistentData().get("commwars_hadMarkets");
+		if (!(val instanceof Map)) {
+			val = new LinkedHashMap<String, Boolean>();
+			Global.getSector().getPersistentData().put("commwars_hadMarkets", val);
+		}
+		Map<String, Boolean> had = (Map<String, Boolean>) val;
+
+		for (FactionAPI faction : Global.getSector().getAllFactions()) {
+			if (faction.isPlayerFaction()) continue;
+			if (com.fs.starfarer.api.impl.campaign.ids.Factions.NEUTRAL
+					.equals(faction.getId())) continue;
+			boolean has = !Misc.getFactionMarkets(faction, null).isEmpty();
+			Boolean before = had.get(faction.getId());
+			if (has) {
+				had.put(faction.getId(), true);
+			} else if (Boolean.TRUE.equals(before)) {
+				had.put(faction.getId(), false);
+				CommWarsConfig.log("Faction eliminated as a sector power: " + faction.getId());
+				com.fs.starfarer.api.impl.campaign.intel.MessageIntel msg =
+						new com.fs.starfarer.api.impl.campaign.intel.MessageIntel(
+								Misc.ucFirst(faction.getDisplayNameWithArticle())
+								+ " has been eliminated as a sector power - not one of its "
+								+ "worlds remains. History will remember who wrote the "
+								+ "final chapter.", Misc.getTextColor(),
+								new String[] { faction.getDisplayName() },
+								faction.getBaseUIColor());
+				String crest = faction.getCrest();
+				if (crest != null) msg.setIcon(crest);
+				Global.getSector().getCampaignUI().addMessage(msg);
+			}
 		}
 	}
 

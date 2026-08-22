@@ -102,6 +102,12 @@
 	# out of the pool for a while
 	"commwars_gateEnabled": true,
 	"commwars_deferToVanillaCrises": true,
+
+	# Total War: strips story-critical protection from every market, so any
+	# world can be saturation-bombed down (size -1 per bombardment) and
+	# destroyed at size 4 or below - factions can be entirely eliminated.
+	# WARNING: questlines anchored on destroyed worlds will strand
+	"commwars_totalWar": false,
 	"commwars_gateRatio": 0.8,
 	"commwars_coalitionDropoutChance": 0.5,
 	"commwars_coalitionDropoutDays": 180,

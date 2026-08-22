@@ -41,6 +41,11 @@ Retribution and Threat Incursion (vanilla API only, LunaLib optional).
 
 ## Status
 
+- [x] Total War (config, off by default): strips story-critical protection
+  from all markets each tick - any world can be bombed down and destroyed,
+  factions can be entirely eliminated (announced). Questlines anchored on
+  destroyed worlds will strand.
+
 - [x] Phase 1: share tracker, per-faction grievance intel (crisis-style
       screen), warning/ultimatum stages, automatic compliance detection,
       calm-based expiry, debug mode (LunaLib menu: reveal all stats, force
