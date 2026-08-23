@@ -119,8 +119,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			esd.sendIntelUpdateOnReaching = false;
 		}
 
-		addFactor(new GrievanceDecayFactor());
-		addFactor(new SuppressionFactor());
+		// full factor roster (decay, suppression, military, gate, vendetta);
+		// commodity factors are synced per-cause by updateCauses
+		ensureFactors();
 		updateCauses(initialCauses);
 
 		// now that the event is fully constructed, add it and send notification
