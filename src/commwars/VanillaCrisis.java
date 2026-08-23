@@ -36,6 +36,16 @@ public class VanillaCrisis {
 		FACTOR_BY_FACTION.put(Factions.PIRATES, PirateHostileActivityFactor.class);
 	}
 
+	/**
+	 * Factions whose hostile-activity contribution is a recurring background
+	 * condition (cells, bases) rather than a one-shot resolvable campaign:
+	 * for these, only an actually-rolled crisis event defers the grievance -
+	 * perpetual background pressure must not gag the meter forever.
+	 */
+	private static final java.util.Set<String> RECURRING_PRESSURE =
+			new java.util.HashSet<String>(java.util.Arrays.asList(
+					Factions.LUDDIC_PATH, Factions.PIRATES));
+
 	/** True if the faction has a vanilla colony crisis active or building. */
 	public static boolean isActiveOrPending(String factionId) {
 		if (!CommWarsConfig.deferToVanillaCrises()) return false;
@@ -51,6 +61,12 @@ public class VanillaCrisis {
 		if (esd != null && esd.rollData instanceof HAERandomEventData
 				&& factorClass.isInstance(((HAERandomEventData) esd.rollData).factor)) {
 			return true;
+		}
+
+		// recurring-pressure factions (Path cells, pirate bases) never stop
+		// contributing - mere pending pressure doesn't defer their grievances
+		if (RECURRING_PRESSURE.contains(factionId)) {
+			return false;
 		}
 
 		// their factor is actively building the crisis bar
