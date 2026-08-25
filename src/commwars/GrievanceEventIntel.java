@@ -1054,15 +1054,26 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	}
 
 	/**
-	 * Hide the intel entry while it is deferred to a vanilla colony crisis:
-	 * the crisis intel is already in the list saying the same thing, and a
-	 * frozen grievance is not a happening event. It stays registered and
-	 * updated (getIntel still returns it), so it reappears the moment the
-	 * crisis clears.
+	 * Dormant: nothing is actually happening - no active causes accruing, no
+	 * strike, and resentment below the warning line (not even a diplomatic
+	 * note). A grievance whose causes have lapsed and is simply decaying
+	 * toward expiry. A vendetta (blood debt) is never dormant.
+	 */
+	public boolean isDormant() {
+		if (isVendetta()) return false;
+		return !hasCauses() && !isStrikeActive() && getProgress() < WARNING_PROGRESS;
+	}
+
+	/**
+	 * Keep the intel entry out of the list when it is not a happening event:
+	 * deferred behind a vanilla colony crisis (which already occupies the
+	 * list), or dormant and winding down. It stays registered and updated
+	 * (getIntel still returns it), so it reappears the moment it has
+	 * something to say again.
 	 */
 	@Override
 	public boolean isHidden() {
-		return super.isHidden() || isDeferredToVanillaCrisis();
+		return super.isHidden() || isDeferredToVanillaCrisis() || isDormant();
 	}
 
 	@Override
