@@ -1053,6 +1053,18 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		return super.getIcon();
 	}
 
+	/**
+	 * Hide the intel entry while it is deferred to a vanilla colony crisis:
+	 * the crisis intel is already in the list saying the same thing, and a
+	 * frozen grievance is not a happening event. It stays registered and
+	 * updated (getIntel still returns it), so it reappears the moment the
+	 * crisis clears.
+	 */
+	@Override
+	public boolean isHidden() {
+		return super.isHidden() || isDeferredToVanillaCrisis();
+	}
+
 	@Override
 	public Color getBarColor() {
 		Color color = getFaction().getBaseUIColor();
