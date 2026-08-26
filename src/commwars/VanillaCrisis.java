@@ -5,7 +5,6 @@ import java.util.Map;
 
 import com.fs.starfarer.api.impl.campaign.ids.Factions;
 import com.fs.starfarer.api.impl.campaign.intel.events.BaseEventIntel.EventStageData;
-import com.fs.starfarer.api.impl.campaign.intel.events.EventFactor;
 import com.fs.starfarer.api.impl.campaign.intel.events.HegemonyHostileActivityFactor;
 import com.fs.starfarer.api.impl.campaign.intel.events.HostileActivityEventIntel;
 import com.fs.starfarer.api.impl.campaign.intel.events.HostileActivityEventIntel.HAERandomEventData;
@@ -36,15 +35,6 @@ public class VanillaCrisis {
 		FACTOR_BY_FACTION.put(Factions.PIRATES, PirateHostileActivityFactor.class);
 	}
 
-	/**
-	 * Factions whose hostile-activity contribution is a recurring background
-	 * condition (cells, bases) rather than a one-shot resolvable campaign:
-	 * for these, only an actually-rolled crisis event defers the grievance -
-	 * perpetual background pressure must not gag the meter forever.
-	 */
-	private static final java.util.Set<String> RECURRING_PRESSURE =
-			new java.util.HashSet<String>(java.util.Arrays.asList(
-					Factions.LUDDIC_PATH, Factions.PIRATES));
 
 	/** True if the faction has a vanilla colony crisis active or building. */
 	public static boolean isActiveOrPending(String factionId) {
@@ -56,24 +46,17 @@ public class VanillaCrisis {
 		HostileActivityEventIntel ha = HostileActivityEventIntel.get();
 		if (ha == null) return false;
 
-		// an actual crisis event has been rolled for this faction
+		// Defer only when an actual crisis EVENT has been rolled for this
+		// faction (an imminent attack) - one coercion campaign at a time.
+		// Every faction's baseline hostile-activity contribution is a
+		// perpetual background condition (colony presence, AI-core use, fuel
+		// production, cells, bases) that never stops while the player holds
+		// the colony/tech/fuel; deferring on that would gag the grievance
+		// meter forever, whatever the vanilla factor is even about.
 		EventStageData esd = ha.getDataFor(HostileActivityEventIntel.Stage.HA_EVENT);
 		if (esd != null && esd.rollData instanceof HAERandomEventData
 				&& factorClass.isInstance(((HAERandomEventData) esd.rollData).factor)) {
 			return true;
-		}
-
-		// recurring-pressure factions (Path cells, pirate bases) never stop
-		// contributing - mere pending pressure doesn't defer their grievances
-		if (RECURRING_PRESSURE.contains(factionId)) {
-			return false;
-		}
-
-		// their factor is actively building the crisis bar
-		for (EventFactor factor : ha.getFactors()) {
-			if (factorClass.isInstance(factor) && factor.getProgress(ha) > 0) {
-				return true;
-			}
 		}
 		return false;
 	}

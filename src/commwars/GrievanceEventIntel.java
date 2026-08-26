@@ -1065,15 +1065,15 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	}
 
 	/**
-	 * Keep the intel entry out of the list when it is not a happening event:
-	 * deferred behind a vanilla colony crisis (which already occupies the
-	 * list), or dormant and winding down. It stays registered and updated
-	 * (getIntel still returns it), so it reappears the moment it has
-	 * something to say again.
+	 * Keep the intel entry out of the list only when it is dormant - no
+	 * active causes, winding down toward expiry. A grievance frozen by a
+	 * vanilla colony crisis but still holding active causes stays visible
+	 * (frozen, showing the deferral row) rather than vanishing mid-watch;
+	 * once its causes lapse it becomes dormant and hides like any other.
 	 */
 	@Override
 	public boolean isHidden() {
-		return super.isHidden() || isDeferredToVanillaCrisis() || isDormant();
+		return super.isHidden() || isDormant();
 	}
 
 	@Override
