@@ -36,6 +36,9 @@ public class SuppressionFactor extends BaseEventFactor {
 		if (g.getSupportingStrikeFor() != null) {
 			return "Joint enforcement underway";
 		}
+		if (g.isCommissionSuppressed()) {
+			return "Serving under their flag (commission)";
+		}
 		if (g.isDeferredToVanillaCrisis()) {
 			return "Deferred: colony crisis takes precedence";
 		}
@@ -78,6 +81,12 @@ public class SuppressionFactor extends BaseEventFactor {
 							+ ". The joint strike speaks for every member's grievance - their "
 							+ "own ledger was vented into it and holds until the outcome is "
 							+ "known.", 0f);
+				} else if (g.isCommissionSuppressed()) {
+					tooltip.addPara("You hold a commission with "
+							+ g.getFaction().getDisplayNameWithArticle()
+							+ ". While you serve under their flag, they will not press their "
+							+ "grievance against you - the dispute is frozen. Resign the "
+							+ "commission and it resumes where it left off.", 0f);
 				} else if (g.isDeferredToVanillaCrisis()) {
 					tooltip.addPara("This faction is already pressuring your colonies through a "
 							+ "colony crisis - one campaign of coercion at a time. The grievance "

@@ -367,7 +367,18 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	 */
 	public boolean isAccrualSuppressed() {
 		return isInTruce() || isStrikeActive() || supportingStrikeFor != null
-				|| isDeferredToVanillaCrisis();
+				|| isDeferredToVanillaCrisis() || isCommissionSuppressed();
+	}
+
+	/**
+	 * You serve under this faction's flag: a patron does not hand its own
+	 * commissioned client trade ultimatums. The whole grievance freezes
+	 * while the commission holds (resigning resumes it, plus the military
+	 * spike from updateCommissionState).
+	 */
+	public boolean isCommissionSuppressed() {
+		if (vendetta) return false; // a blood feud honors no commission
+		return factionId.equals(Misc.getCommissionFactionId());
 	}
 
 	/** The vanilla colony-crisis system already speaks for this faction. */

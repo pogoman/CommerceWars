@@ -5,7 +5,7 @@ commwars_tickDays,Days per Tick,Double,7,"How often market shares are re-checked
 commwars_minPlayerShare,Min Player Share (percent),Int,20,"Your export share of a commodity must be at least this to draw any attention.",1,100
 commwars_minFactionShare,Min Faction Share (percent),Int,10,"A faction only cares about commodities where it holds at least this share - a marginal producer is not a real competitor.",1,100
 commwars_topProducers,Top Producers,Int,3,"The faction must be among this many top producers of the commodity (not counting you) to hold a grievance over it.",1,10
-commwars_noticeFraction,Notice Fraction,Double,0.5,"Your share must be at least this fraction of the faction's own share before they notice you. Also the compliance target: an ultimatum is satisfied when your share falls back below this line.",0.1,2.0
+commwars_noticeFraction,Notice Fraction,Double,0.5,"Your share must be at least this fraction of the reference faction share before they notice you. Also the compliance target.",0.1,2.0
 accrualHeader,Accrual Header,Header,Resentment,"The grievance bar runs 0-600: diplomatic warning at 200, formal ultimatum at 400, enforcement at 600. Monthly progress per contested commodity is weightMult x (your share / their share), capped.",,
 commwars_weightMult,Weight Multiplier,Double,4.0,"Scales how fast resentment accrues from each contested commodity.",0.5,30
 commwars_maxMonthlyPerCommodity,Max Monthly per Commodity,Int,10,"Cap on monthly resentment from any single commodity.",1,50

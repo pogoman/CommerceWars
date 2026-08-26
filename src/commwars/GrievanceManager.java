@@ -127,6 +127,12 @@ public class GrievanceManager implements EveryFrameScript {
 						+ ": vanilla colony crisis active/pending");
 				continue;
 			}
+			// a patron does not open a dossier on its own commissioned client
+			if (factionId.equals(Misc.getCommissionFactionId())) {
+				CommWarsConfig.log("Skipping grievance for " + factionId
+						+ ": player holds a commission with them");
+				continue;
+			}
 
 			GrievanceEventIntel intel = new GrievanceEventIntel(factionId, all.get(factionId));
 			intel.setMilitaryCause(mil.get(factionId));

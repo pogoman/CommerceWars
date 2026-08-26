@@ -59,9 +59,12 @@ public class CoalitionCalc {
 	public static List<String> partnersFor(String factionId, Collection<String> activeIds) {
 		FactionAPI faction = Global.getSector().getFaction(factionId);
 		List<String> result = new ArrayList<String>();
+		String commissionFaction = com.fs.starfarer.api.util.Misc.getCommissionFactionId();
 		for (String other : activeIds) {
 			if (other.equals(factionId)) continue;
 			if (isDemoralized(other)) continue;
+			// a faction you serve won't join a coalition against you
+			if (other.equals(commissionFaction)) continue;
 			FactionAPI otherFaction = Global.getSector().getFaction(other);
 			if (otherFaction == null) continue;
 			if (faction.isHostileTo(otherFaction)) continue;
