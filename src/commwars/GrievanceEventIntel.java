@@ -77,6 +77,7 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	protected boolean strikeMilitaryMode = false;
 	protected Float cachedRaidStr = null;
 	protected Float cachedDefenderStr = null;
+	protected int cachedFleetCount = 0;
 
 	protected Long truceStart = null;
 	protected float truceDays = 0f;
@@ -550,17 +551,20 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		if (cachedRaidStr != null) return;
 		if (strike == null || strikeTarget == null) return;
 		float raidStr = 0f;
+		int fleets = 0;
 		for (com.fs.starfarer.api.campaign.CampaignFleetAPI fleet : strike.getFleets()) {
 			raidStr += com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
 					.getRaidStr(fleet);
+			fleets++;
 		}
 		if (raidStr <= 0f) return; // fleets not present yet / all gone - retry later
 		cachedRaidStr = raidStr;
+		cachedFleetCount = fleets;
 		cachedDefenderStr = com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
 				.getDefenderStr(strikeTarget);
-		CommWarsConfig.log("Ground assault on " + strikeTarget.getName() + ": raid str "
-				+ (int) cachedRaidStr.floatValue() + " vs defender str "
-				+ (int) cachedDefenderStr.floatValue());
+		CommWarsConfig.log("Ground assault on " + strikeTarget.getName() + ": " + fleets
+				+ " fleets, raid str " + (int) cachedRaidStr.floatValue()
+				+ " vs defender str " + (int) cachedDefenderStr.floatValue());
 	}
 
 	/**
@@ -583,6 +587,59 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	}
 
 	/**
+	 * A live projection of the inbound strike's ground assault against the
+	 * target's CURRENT defenses - shown on the grievance screen so the player
+	 * can judge whether their defenses will hold before the fleets arrive,
+	 * regardless of what the vanilla (space-only) FGI assessment says.
+	 */
+	public void addGroundAssessment(TooltipMakerAPI info) {
+		if (strike == null || strikeTarget == null) return;
+		if (strikeWasTacBomb) {
+			info.addPara("Their intent is bombardment - a planetary shield blunts it, but "
+					+ "ground raids and shields will not stop the shells.", 5f);
+			return;
+		}
+		float raidStr = 0f;
+		for (com.fs.starfarer.api.campaign.CampaignFleetAPI fleet : strike.getFleets()) {
+			raidStr += com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
+					.getRaidStr(fleet);
+		}
+		if (raidStr <= 0f) return; // fleets not spawned/measurable yet
+		float defenderStr = com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
+				.getDefenderStr(strikeTarget);
+		Color h = Misc.getHighlightColor();
+		Color good = Misc.getPositiveHighlightColor();
+		Color bad = Misc.getNegativeHighlightColor();
+
+		float need = strikeHeistIndustryId != null
+				? CommWarsConfig.heistBreakMargin() : CommWarsConfig.groundBreakMargin();
+		boolean willBreak = raidStr >= defenderStr * need;
+		float ratio = defenderStr > 0 ? raidStr / defenderStr : 99f;
+
+		info.addPara("Ground assessment: their projected raid strength is %s against " + strikeTarget
+				.getName() + "'s defender strength %s (planetary shield and garrison marines "
+				+ "included).", 5f, h, Misc.getWithDGS((int) raidStr),
+				Misc.getWithDGS((int) defenderStr));
+		if (strikeHeistIndustryId != null) {
+			info.addPara(willBreak
+					? "They have the overwhelming advantage needed to seize the installed asset."
+					: "They lack the overwhelming advantage needed to seize an installed asset - "
+							+ "your defenses should hold the vault (they need a " + need
+							+ "-to-1 ground advantage; they have "
+							+ Misc.getRoundedValueMaxOneAfterDecimal(ratio) + ").",
+					3f, willBreak ? bad : good, willBreak ? "" : "your defenses should hold");
+		} else {
+			info.addPara(willBreak
+					? "They can break your ground defenses - expect industries disrupted if this "
+							+ "lands."
+					: "Your ground defenses should repel this - they cannot break through (they "
+							+ "need a " + need + "-to-1 advantage; they have "
+							+ Misc.getRoundedValueMaxOneAfterDecimal(ratio) + ").",
+					3f, willBreak ? bad : good, willBreak ? "" : "should repel this");
+		}
+	}
+
+	/**
 	 * When the raid connects, attempt the item heist - but ONLY if the
 	 * raiders have the overwhelming ground advantage required to lift a
 	 * strategic asset. Called every manager tick while a strike is active.
@@ -592,10 +649,15 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		if (strike.isAborted() || strike.isFailed()) return;
 		if (strike.getRaidAction() == null) return;
 		if (strike.getRaidAction().getSuccessFraction() <= 0f) return;
-		if (strikeHeistIndustryId == null) return; // not a heist strike
-		if (!brokeGround(CommWarsConfig.heistBreakMargin())) return; // not enough to grab it
 
-		performItemTheft();
+		// measure the ground assault now, while the fleets are still present -
+		// the outcome must not depend on fleets having despawned by resolution
+		measureGroundAssault();
+
+		// item heist only on an overwhelming advantage
+		if (strikeHeistIndustryId != null && brokeGround(CommWarsConfig.heistBreakMargin())) {
+			performItemTheft();
+		}
 	}
 
 	/** The heist payoff: lift the installed item and take it somewhere real. */
@@ -752,8 +814,11 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			releasePartners(false);
 		}
 
-		// a persistent, readable record of the outcome
+		// a persistent after-action report
 		StrikeSummaryIntel summary = new StrikeSummaryIntel(factionId, targetName);
+		summary.setOutcome(broke, cachedFleetCount,
+				cachedRaidStr != null ? (int) cachedRaidStr.floatValue() : 0,
+				cachedDefenderStr != null ? (int) cachedDefenderStr.floatValue() : 0);
 		if (broke) {
 			if (disruptSummary != null) {
 				summary.setDisrupt(disruptSummary, (int) CommWarsConfig.strikeDisruptDays());
@@ -1375,6 +1440,7 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		} else if (isUltimatumReached() && isStrikeActive()) {
 			info.addPara("Enforcement fleets are underway - the time for negotiation has passed.",
 					Misc.getNegativeHighlightColor(), 10f);
+			addGroundAssessment(info);
 		}
 
 		if (!CommWarsConfig.debugMode()) return;

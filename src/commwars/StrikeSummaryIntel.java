@@ -12,20 +12,25 @@ import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.util.Misc;
 
 /**
- * A persistent, readable record of what one enforcement action actually cost
- * the player - stolen goods, industries disrupted, credit value - so the
- * damage does not vanish with a scrolling feed message. Expires after a while.
+ * A persistent after-action report for one enforcement action: the forces
+ * committed, the ground assault result (raid strength vs defender strength),
+ * and the actual consequences - so the damage (or the successful defense) does
+ * not vanish with a scrolling feed message, and the outcome is legible in a
+ * way the vanilla FGI "Success" line is not.
  */
 public class StrikeSummaryIntel extends BaseIntelPlugin {
 
 	protected String factionId;
 	protected String targetName;
-	protected String lootSummary;    // e.g. "5,906 supplies, 5,062 organics"
-	protected int lootValue;         // approx credits
-	protected String disruptSummary; // e.g. "Farming, Mining"
+
+	protected boolean broke;          // did they break the ground defenses
+	protected int attackerFleets;
+	protected int attackerRaidStr;
+	protected int defenderStr;
+
+	protected String disruptSummary;  // industries disrupted (broke through)
 	protected int disruptDays;
 	protected boolean bombarded;
-	protected boolean heist;
 	protected String heistItemName;
 
 	public StrikeSummaryIntel(String factionId, String targetName) {
@@ -34,7 +39,6 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 		Global.getSector().getIntelManager().addIntel(this, false);
 	}
 
-	/** Call once all fields are set: keeps the record for the configured window. */
 	public void finish() {
 		endAfterDelay(CommWarsConfig.strikeSummaryDays());
 	}
@@ -43,9 +47,11 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 		return Global.getSector().getFaction(factionId);
 	}
 
-	public void setLoot(String summary, int value) {
-		this.lootSummary = summary;
-		this.lootValue = value;
+	public void setOutcome(boolean broke, int fleets, int raidStr, int defenderStr) {
+		this.broke = broke;
+		this.attackerFleets = fleets;
+		this.attackerRaidStr = raidStr;
+		this.defenderStr = defenderStr;
 	}
 
 	public void setDisrupt(String summary, int days) {
@@ -54,7 +60,7 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 	}
 
 	public void setBombarded(boolean b) { this.bombarded = b; }
-	public void setHeist(String itemName) { this.heist = true; this.heistItemName = itemName; }
+	public void setHeist(String itemName) { this.heistItemName = itemName; }
 
 	@Override
 	protected float getBaseDaysAfterEnd() {
@@ -63,7 +69,8 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 
 	@Override
 	public String getName() {
-		return "Enforcement Damage - " + getFaction().getDisplayName()
+		String kind = broke ? "Enforcement Damage" : "Enforcement Repelled";
+		return kind + " - " + getFaction().getDisplayName()
 				+ (targetName != null ? " vs " + targetName : "");
 	}
 
@@ -83,36 +90,50 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 		float opad = 10f;
 		Color h = Misc.getHighlightColor();
 		Color bad = Misc.getNegativeHighlightColor();
+		Color good = Misc.getPositiveHighlightColor();
 		FactionAPI faction = getFaction();
+		String target = targetName != null ? targetName : "your colony";
 
-		info.addPara(Misc.ucFirst(faction.getDisplayNameWithArticle())
-				+ " enforcement fleets struck " + (targetName != null ? targetName : "your colony")
-				+ ". The damage they did:", opad);
+		// forces
+		info.addPara(Misc.ucFirst(faction.getDisplayNameWithArticle()) + " committed %s fleet"
+				+ (attackerFleets == 1 ? "" : "s") + " against " + target + ".", opad,
+				h, "" + attackerFleets);
 
-		info.setBulletedListMode(BaseIntelPlugin.INDENT);
-		if (disruptSummary != null) {
-			info.addPara("Industries disrupted for %s days: " + disruptSummary, 5f, bad,
-					"" + disruptDays);
-			info.addPara("- production of those goods stops, and your market share on them "
-					+ "falls until they recover", 3f);
-		}
-		if (lootSummary != null) {
-			info.addPara("Stockpiles seized: " + lootSummary
-					+ (lootValue > 0 ? " (~" + Misc.getDGSCredits(lootValue) + ")" : ""), 5f, bad, "");
-		}
-		if (bombarded) {
-			info.addPara("Tactical bombardment - military infrastructure disrupted, stability hit",
-					5f, bad, "");
-		}
-		if (heist && heistItemName != null) {
-			info.addPara("Strategic asset seized: " + heistItemName
-					+ " - carried off, and recoverable by raiding them back", 5f, bad, "");
-		}
-		info.setBulletedListMode(null);
+		// the ground assault
+		float ratio = defenderStr > 0 ? (float) attackerRaidStr / defenderStr : 99f;
+		info.addPara("Ground assault: raid strength %s against your defender strength %s "
+				+ "(including any planetary shield and garrison marines) - a %s-to-1 ratio.",
+				3f, h, Misc.getWithDGS(attackerRaidStr), Misc.getWithDGS(defenderStr),
+				Misc.getRoundedValueMaxOneAfterDecimal(ratio));
 
-		if (disruptSummary == null && lootSummary == null && !bombarded && !heist) {
-			info.addPara("Your defenses held - the enforcement action achieved little of lasting "
-					+ "consequence.", opad, Misc.getPositiveHighlightColor(), h, "");
+		if (broke) {
+			info.addPara("The raiders broke through. Casualties among the attacking marines were "
+					+ (ratio >= 2f ? "light - they came in overwhelming force."
+						: "heavy - they barely carried the assault."), 3f,
+					ratio >= 2f ? h : good, ratio >= 2f ? "light" : "heavy");
+
+			info.setBulletedListMode(BaseIntelPlugin.INDENT);
+			if (disruptSummary != null) {
+				info.addPara("Industries disrupted for %s days: " + disruptSummary, 8f, bad,
+						"" + disruptDays);
+				info.addPara("- production of those goods stops; your market share on them "
+						+ "falls until they recover", 3f);
+			}
+			if (bombarded) {
+				info.addPara("Tactical bombardment - military infrastructure disrupted, "
+						+ "stability hit", 8f, bad, "");
+			}
+			if (heistItemName != null) {
+				info.addPara("Strategic asset seized: " + heistItemName
+						+ " - carried off, and recoverable by raiding them back", 8f, bad, "");
+			}
+			info.setBulletedListMode(null);
+		} else {
+			info.addPara("Your ground defenses held - the assault was repelled. Nothing was "
+					+ "taken, nothing disrupted, and the attacking fleets took losses forcing "
+					+ "the failed landing.", opad, good, "repelled");
+			info.addPara("They withdraw, and their resentment - undented - will send them back "
+					+ "in greater force.", 3f);
 		}
 	}
 
@@ -126,6 +147,6 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 
 	@Override
 	public String getSortString() {
-		return "Enforcement Damage";
+		return "Enforcement";
 	}
 }
