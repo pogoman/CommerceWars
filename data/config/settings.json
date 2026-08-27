@@ -90,6 +90,13 @@
 	"commwars_strikeDisruptDays": 90,
 	"commwars_strikeSummaryDays": 30,
 
+	# A raid can only steal or disrupt if the raiders break the target's
+	# CURRENT ground defenses - the same check the game applies to the
+	# player's own raids. Their total fleet raid strength must reach this
+	# multiple of the defender strength (which includes Planetary Shield,
+	# marines in cargo). Below it: repelled, nothing taken or disrupted
+	"commwars_groundBreakMargin": 1.0,
+
 	# Item heists: at high escalation, strikes go after installed items
 	# (nanoforge, synchrotron...) in grievance-relevant industries. A heist is
 	# a ground operation - it targets ground defenses and needs marines

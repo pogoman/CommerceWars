@@ -81,6 +81,7 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	protected boolean strikeMilitaryMode = false;
 	protected String strikeLootSummary = null;
 	protected int strikeLootValue = 0;
+	protected Boolean strikeBrokeThrough = null;
 
 	protected Long truceStart = null;
 	protected float truceDays = 0f;
@@ -532,6 +533,7 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		strikeMilitaryMode = false;
 		strikeLootSummary = null;
 		strikeLootValue = 0;
+		strikeBrokeThrough = null;
 		strikePartners = null;
 		lastStrikeEnd = Global.getSector().getClock().getTimestamp();
 	}
@@ -542,16 +544,51 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	}
 
 	/**
-	 * Fires the theft as soon as the strike's raid actually connects with the
-	 * colony (success fraction goes positive), instead of waiting for the
-	 * fleets to finish their whole operation and head home. Called every
-	 * manager tick while a strike is active.
+	 * Did the raiders actually overcome the colony's CURRENT ground defenses?
+	 * The same check the game applies to the player's own raids: total raid
+	 * strength across the strike's surviving fleets versus the target's
+	 * defender strength (which now includes any Planetary Shield, marines in
+	 * cargo, etc.). If they cannot break the ground, they can neither steal
+	 * nor disrupt - exactly as it works when the player raids. Cached once the
+	 * raid connects (fleets still present), since defenses may have grown
+	 * since the fleet was committed.
+	 */
+	public boolean brokeGroundDefenses() {
+		if (strikeBrokeThrough != null) return strikeBrokeThrough;
+		if (strike == null || strikeTarget == null) return false;
+
+		float raidStr = 0f;
+		for (com.fs.starfarer.api.campaign.CampaignFleetAPI fleet : strike.getFleets()) {
+			raidStr += com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
+					.getRaidStr(fleet);
+		}
+		float defenderStr = com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
+				.getDefenderStr(strikeTarget);
+
+		// no fleets left to measure (all destroyed / despawned): they clearly
+		// did not carry the ground assault
+		if (raidStr <= 0f) return false;
+
+		boolean broke = raidStr >= defenderStr * CommWarsConfig.groundBreakMargin();
+		strikeBrokeThrough = broke;
+		CommWarsConfig.log("Ground assault on " + strikeTarget.getName() + ": raid str "
+				+ (int) raidStr + " vs defender str " + (int) defenderStr + " (x margin "
+				+ CommWarsConfig.groundBreakMargin() + ") -> "
+				+ (broke ? "BROKE THROUGH" : "REPELLED"));
+		return broke;
+	}
+
+	/**
+	 * Fires the theft as soon as the raid connects - but only if the raiders
+	 * actually broke the ground defenses. Called every manager tick while a
+	 * strike is active.
 	 */
 	public void checkStrikeRaidHit() {
 		if (strike == null || strikeLootTaken) return;
 		if (strike.isAborted() || strike.isFailed()) return;
 		if (strike.getRaidAction() == null) return;
 		if (strike.getRaidAction().getSuccessFraction() <= 0f) return;
+		if (!brokeGroundDefenses()) return; // defenses held: nothing taken
 
 		String loot = performTheft();
 		if (loot != null) {
@@ -728,14 +765,13 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	}
 
 	/**
-	 * A successful strike must actually cut the player's contested production,
-	 * or it does nothing to ease the grievance. Guarantee it: disrupt the
-	 * offending industries directly (bypassing the shield/defense resistance
-	 * that a mere ground raid runs into) - production stops, market share
-	 * falls, and the dispute finally has a mechanism to cool. Returns a
-	 * summary of what was disrupted.
+	 * Disrupt the offending (or military-track) industries for a guaranteed
+	 * duration - ONLY called once the raiders have broken the ground defenses,
+	 * so it is exactly as legitimate as the theft. Production stops, market
+	 * share falls, and the dispute finally has a mechanism to cool. Never used
+	 * when defenses held. Returns a summary of what was disrupted.
 	 */
-	protected String forceDisruptIndustries() {
+	protected String disruptIndustries() {
 		if (strikeTarget == null) return null;
 		if (strikeWasTacBomb || strikeHeistIndustryId != null) return null; // own effects
 
@@ -752,68 +788,81 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			ind.setDisrupted(days, true);
 			if (sb.length() > 0) sb.append(", ");
 			sb.append(ind.getCurrentName());
-			CommWarsConfig.log("  force-disrupted " + industryId + " on "
+			CommWarsConfig.log("  disrupted " + industryId + " on "
 					+ strikeTarget.getName() + " for " + (int) days + " days");
 		}
 		return sb.length() > 0 ? sb.toString() : null;
 	}
 
-	/** Called by the manager when the strike ends with the raiders victorious. */
+	/** Called by the manager when the strike's fleets complete their operation. */
 	public void onStrikeSucceeded() {
 		if (strike == null) return;
+		boolean broke = brokeGroundDefenses();
 		CommWarsConfig.log("Enforcement strike by " + factionId + " on "
-				+ (strikeTarget != null ? strikeTarget.getName() : "?") + " SUCCEEDED");
+				+ (strikeTarget != null ? strikeTarget.getName() : "?")
+				+ (broke ? " BROKE THROUGH" : " was REPELLED at the ground"));
 
-		// they made their point: accrual freezes for a while - for the whole
-		// bloc. Except in a blood feud: there are no points, only reprisals
-		if (!vendetta) {
-			truceStart = Global.getSector().getClock().getTimestamp();
-			truceDays = CommWarsConfig.truceDaysAfterStrike();
-			releasePartners(true);
+		String targetName = strikeTarget != null ? strikeTarget.getName() : "your colony";
+		String disruptSummary = null;
+		String lootSummary = null;
+		String sourceName = strikeSource != null ? strikeSource.getName() : null;
+
+		if (broke) {
+			// they cracked the ground: theft and disruption both land, and
+			// they get their truce - the same ground check gates all of it,
+			// exactly as it does for the player's own raids
+			if (!strikeLootTaken) performTheft();
+			lootSummary = strikeLootSummary;
+			disruptSummary = disruptIndustries();
+			if (!vendetta) {
+				truceStart = Global.getSector().getClock().getTimestamp();
+				truceDays = CommWarsConfig.truceDaysAfterStrike();
+			}
+			releasePartners(!vendetta);
 		} else {
+			// ground defenses held: nothing taken, nothing disrupted. No truce
+			// - they made no point - and they escalate, to come harder next
+			// time (eventually to bombardment, which a raid cannot substitute
+			// for). The bar stays where the launch left it.
+			escalation++;
 			releasePartners(false);
 		}
 
-		// normally the theft fired when the raid connected (checkStrikeRaidHit);
-		// this is the fallback in case resolution arrives first
-		if (!strikeLootTaken) performTheft();
-
-		// the strike must actually cut contested production or it accomplishes
-		// nothing - guarantee the disruption
-		String disruptSummary = forceDisruptIndustries();
-
-		// a persistent, readable record of the damage
-		String targetName = strikeTarget != null ? strikeTarget.getName() : "your colony";
+		// a persistent, readable record of the outcome
 		StrikeSummaryIntel summary = new StrikeSummaryIntel(factionId, targetName);
-		if (strikeLootSummary != null) summary.setLoot(strikeLootSummary, strikeLootValue);
-		if (disruptSummary != null) {
-			summary.setDisrupt(disruptSummary, (int) CommWarsConfig.strikeDisruptDays());
+		if (broke) {
+			if (lootSummary != null) summary.setLoot(lootSummary, strikeLootValue);
+			if (disruptSummary != null) {
+				summary.setDisrupt(disruptSummary, (int) CommWarsConfig.strikeDisruptDays());
+			}
+			summary.setBombarded(strikeWasTacBomb);
 		}
-		summary.setBombarded(strikeWasTacBomb);
 		summary.finish();
 
-		String sourceName = strikeSource != null ? strikeSource.getName() : null;
-		String lootSummary = strikeLootSummary;
 		clearStrike();
 
 		String text;
-		if (vendetta) {
+		if (!broke) {
+			text = "Your ground defenses repelled " + Misc.ucFirst(getFaction()
+					.getDisplayNameWithArticle()) + "'s enforcement action against " + targetName
+					+ " - nothing taken, nothing disrupted. They withdraw, and will return in "
+					+ "greater force. See the enforcement damage report in your intel.";
+		} else if (vendetta) {
 			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
 					+ "'s retribution fleets have done their work at " + targetName + ". "
 					+ "The blood debt is not settled - it is merely fed.";
 		} else {
 			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
 					+ " enforcement action against " + targetName + " has run its course.";
-			if (disruptSummary != null) {
-				text += " Industries disrupted: " + disruptSummary + ".";
-			}
+			if (disruptSummary != null) text += " Industries disrupted: " + disruptSummary + ".";
 			if (lootSummary != null) {
 				text += " Seized from local stockpiles: " + lootSummary
 						+ (sourceName != null ? " - carried off to " + sourceName + "." : ".");
 			}
 			text += " See the enforcement damage report in your intel.";
 		}
-		announce(text, Misc.getNegativeHighlightColor());
+		announce(text, broke ? Misc.getNegativeHighlightColor()
+				: Misc.getPositiveHighlightColor());
 	}
 
 	/** Called by the manager when the strike is defeated or driven off. */

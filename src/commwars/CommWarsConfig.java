@@ -103,6 +103,7 @@ public class CommWarsConfig {
 	public static int plunderPenalty()          { return i("commwars_plunderPenalty"); }
 	public static float strikeDisruptDays()     { return f("commwars_strikeDisruptDays"); }
 	public static float strikeSummaryDays()     { return f("commwars_strikeSummaryDays"); }
+	public static float groundBreakMargin()     { return f("commwars_groundBreakMargin"); }
 
 	// ---- item heists ----
 
