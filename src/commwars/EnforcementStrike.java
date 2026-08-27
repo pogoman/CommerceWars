@@ -100,19 +100,17 @@ public class EnforcementStrike {
 	public static class HeistPlan {
 		public MarketAPI market;
 		public String industryId;
-		public float neededMarines;
-		public float capacity;
 	}
 
 	/**
-	 * Look for an installed item worth a ground operation. The heist only
-	 * happens if the faction can actually muster enough marines - from its
-	 * real marine production - to overmatch the target's ground defenses.
+	 * Find a player market holding an installed item worth a ground operation.
+	 * Whether the item can actually be lifted is decided at the raid itself,
+	 * against the target's live defenses (see GrievanceEventIntel.brokeGround)
+	 * - lifting a strategic asset takes an overwhelming ground advantage, just
+	 * as it does when the player raids a nanoforge off a core world.
 	 */
 	public static HeistPlan planHeist(GrievanceEventIntel intel, boolean militaryMode,
 									  List<String> contested) {
-		float capacity = MilitaryScore.marineCapacity(intel.getFaction());
-
 		List<MarketAPI> markets = new ArrayList<MarketAPI>(Misc.getPlayerMarkets(false));
 		java.util.Collections.sort(markets, new java.util.Comparator<MarketAPI>() {
 			@Override
@@ -129,63 +127,15 @@ public class EnforcementStrike {
 			for (String industryId : candidates) {
 				Industry ind = market.getIndustry(industryId);
 				if (ind == null || ind.getSpecialItem() == null) continue;
-
-				float needed = MarketCMD.getDefenderStr(market) * CommWarsConfig.heistOvermatch();
-				if (capacity < needed) {
-					CommWarsConfig.log("Heist by " + intel.getFactionId() + " vs "
-							+ market.getName() + " (" + industryId + "): needs "
-							+ (int) needed + " marines, can muster " + (int) capacity
-							+ " - insufficient");
-					continue;
-				}
 				HeistPlan plan = new HeistPlan();
 				plan.market = market;
 				plan.industryId = industryId;
-				plan.neededMarines = needed;
-				plan.capacity = capacity;
 				return plan;
 			}
 		}
 		return null;
 	}
 
-	/** Mustering the operation visibly drains marines at their producing markets. */
-	public static void applyMusterMalus(FactionAPI faction, float neededMarines, float capacity) {
-		// The committed marines are not consumed - survivors return. Only
-		// CASUALTIES are a lasting drain, recovering as replacements are
-		// trained. Casualty rate falls the more overwhelming the force is
-		// (overmatch above the minimum reduces losses), so a lopsided heist
-		// against a soft target barely dents the corps, while one that forced
-		// them to scrape together every marine takes heavier proportional
-		// losses.
-		float overmatch = Math.max(1f, CommWarsConfig.heistOvermatch());
-		float casualtyRate = CommWarsConfig.musterCasualtyFraction() / overmatch;
-		float casualties = neededMarines * casualtyRate;
-
-		float totalProduction = 0f;
-		for (MarketAPI market : Misc.getFactionMarkets(faction, null)) {
-			totalProduction += MilitaryScore.marineProduction(market);
-		}
-		float casualtySupplyUnits = casualties / Math.max(1f, CommWarsConfig.marinesPerSupply());
-
-		for (MarketAPI market : Misc.getFactionMarkets(faction, null)) {
-			float production = MilitaryScore.marineProduction(market);
-			if (production <= 0) continue;
-			float share = totalProduction > 0 ? production / totalProduction : 1f;
-			int penalty = Math.max(CommWarsConfig.heistMusterPenalty(),
-					Math.round(casualtySupplyUnits * share));
-			try {
-				market.getCommodityData(com.fs.starfarer.api.impl.campaign.ids.Commodities.MARINES)
-						.getAvailableStat().addTemporaryModFlat(CommWarsConfig.heistMusterDays(),
-								"commwars_muster", "Marine losses from the raid", -penalty);
-			} catch (Throwable t) {
-				CommWarsConfig.log("muster malus failed at " + market.getName() + ": " + t);
-			}
-		}
-		CommWarsConfig.log("Marine casualties: " + (int) casualties + " of " + (int) neededMarines
-				+ " committed (rate " + Math.round(casualtyRate * 100) + "%), recovering over "
-				+ (int) CommWarsConfig.heistMusterDays() + " days");
-	}
 
 	/** Largest market of the faction that can actually mount the strike. */
 	public static MarketAPI findSource(FactionAPI faction) {
@@ -261,7 +211,6 @@ public class EnforcementStrike {
 			}
 			disrupt.add(heist.industryId);
 			params.raidParams.setDisrupt(disrupt.toArray(new String[0]));
-			applyMusterMalus(intel.getFaction(), heist.neededMarines, heist.capacity);
 		} else if (tacBomb) {
 			params.raidParams.setBombardment(BombardType.TACTICAL);
 		} else {
@@ -290,6 +239,13 @@ public class EnforcementStrike {
 		// ...escalated by a history of defiance...
 		float desired = Math.max(CommWarsConfig.strikeBaseDifficulty(), needed)
 				* (1f + intel.getEscalation() * CommWarsConfig.strikeEscalationMult());
+
+		// ...and, for an item heist, an overwhelming ground force: lifting a
+		// strategic asset takes far more than a disruption raid (as it does
+		// when the player pulls a nanoforge off a core world)
+		if (heist != null) {
+			desired *= CommWarsConfig.heistForceMult();
+		}
 
 		// ...but hard-capped by what their military-industrial base can field -
 		// a coalition pools every member's capacity
@@ -348,8 +304,8 @@ public class EnforcementStrike {
 				+ ", " + (vendetta ? "VENDETTA, " : militaryMode ? "MILITARY track, " : "trade track, ")
 				+ (vendetta ? "SATURATION BOMBARDMENT"
 					: heist != null
-					? "ITEM HEIST vs " + heist.industryId + " (marines "
-							+ (int) heist.capacity + "/" + (int) heist.neededMarines + ")"
+					? "ITEM HEIST attempt vs " + heist.industryId
+							+ " (needs overwhelming ground advantage)"
 					: tacBomb ? "TACTICAL BOMBARDMENT" : "disruption raid") + ")");
 		return true;
 	}

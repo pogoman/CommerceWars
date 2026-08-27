@@ -55,9 +55,9 @@
 	# Enforcement strikes (launched when the bar hits 600). Difficulty =
 	# base * (1 + escalation * escalationMult), capped. Each defeated strike
 	# raises escalation by one. At tacBombEscalation and above, strikes
-	# switch from disruption raids to tactical bombardment. On a successful
-	# strike, up to stealFraction of contested commodities in the target's
-	# storage are carried off, and a truce (accrual frozen) follows
+	# switch from disruption raids to tactical bombardment. A successful
+	# strike (that breaks the ground defenses) disrupts the offending
+	# industries; a truce follows
 	"commwars_strikeBaseDifficulty": 20,
 	"commwars_strikeEscalationMult": 0.5,
 	"commwars_strikeMaxDifficulty": 150,
@@ -74,13 +74,10 @@
 	"commwars_strikeCooldownDays": 60,
 	"commwars_truceDaysAfterStrike": 120,
 	"commwars_tacBombEscalation": 1,
-	"commwars_stealFraction": 0.3,
 
 	# Plundered goods depress the raided market's availability of those
 	# commodities for a while - a real, visible econ effect on top of the
 	# raid's industry disruption
-	"commwars_plunderDays": 60,
-	"commwars_plunderPenalty": 2,
 
 	# A successful strike guarantees disruption of the offending industries
 	# for this many days (production stops, market share falls - the actual
@@ -97,23 +94,20 @@
 	# marines in cargo). Below it: repelled, nothing taken or disrupted
 	"commwars_groundBreakMargin": 1.0,
 
-	# Item heists: at high escalation, strikes go after installed items
-	# (nanoforge, synchrotron...) in grievance-relevant industries. A heist is
-	# a ground operation - it targets ground defenses and needs marines
-	# (defender strength x overmatch), constrained by the faction's actual
-	# marine production (production units x marinesPerSupply). Stolen items go
-	# somewhere real and can be raided back
 	"commwars_heistEscalation": 2,
-	"commwars_heistOvermatch": 1.5,
-	"commwars_marinesPerSupply": 150,
-	"commwars_heistMusterDays": 45,
-	"commwars_heistMusterPenalty": 2,
+	# Item heist: lifting an installed item (nanoforge...) takes an
+	# OVERWHELMING ground advantage - raid strength >= defender strength x
+	# heistBreakMargin (as it does when the player pulls a nanoforge off a
+	# core world). heistForceMult sizes the heist strike bigger to try to
+	# reach it (still capped by military capacity). Attacker losses are
+	# vanilla (the raid fleet is damaged when resisted)
+	"commwars_heistBreakMargin": 3.0,
+	"commwars_heistForceMult": 2.0,
 
 	# Fraction of committed marines LOST as casualties at the minimum-force
 	# (overmatch = 1.0) level; the actual rate is this / overmatch, so a more
 	# overwhelming assault takes proportionally fewer losses. Only casualties
 	# are a lasting drain (survivors return); they recover over heistMusterDays
-	"commwars_musterCasualtyFraction": 0.4,
 
 	# Strength gate: a faction only presses demands (ultimatum/enforcement)
 	# while its military-industrial score - pooled with any coalition partners

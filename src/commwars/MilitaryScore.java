@@ -99,29 +99,6 @@ public class MilitaryScore {
 		return cause;
 	}
 
-	/**
-	 * How many marines a faction can muster for a ground operation,
-	 * constrained by its actual marine production across its markets.
-	 */
-	public static float marineCapacity(FactionAPI faction) {
-		float supply = 0f;
-		for (MarketAPI market : Misc.getFactionMarkets(faction, null)) {
-			supply += marineProduction(market);
-		}
-		return supply * CommWarsConfig.marinesPerSupply();
-	}
-
-	public static float marineProduction(MarketAPI market) {
-		float supply = 0f;
-		for (Industry ind : market.getIndustries()) {
-			if (!ind.isFunctional()) continue;
-			com.fs.starfarer.api.campaign.econ.MutableCommodityQuantity q =
-					ind.getSupply(com.fs.starfarer.api.impl.campaign.ids.Commodities.MARINES);
-			if (q != null) supply += q.getQuantity().getModifiedValue();
-		}
-		return supply;
-	}
-
 	/** Debug breakdown of a faction's score. */
 	public static String describe(FactionAPI faction) {
 		StringBuilder sb = new StringBuilder();

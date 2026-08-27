@@ -98,9 +98,6 @@ public class CommWarsConfig {
 	public static float strikeCooldownDays()    { return f("commwars_strikeCooldownDays"); }
 	public static float truceDaysAfterStrike()  { return f("commwars_truceDaysAfterStrike"); }
 	public static int tacBombEscalation()       { return i("commwars_tacBombEscalation"); }
-	public static float stealFraction()         { return f("commwars_stealFraction"); }
-	public static float plunderDays()           { return f("commwars_plunderDays"); }
-	public static int plunderPenalty()          { return i("commwars_plunderPenalty"); }
 	public static float strikeDisruptDays()     { return f("commwars_strikeDisruptDays"); }
 	public static float strikeSummaryDays()     { return f("commwars_strikeSummaryDays"); }
 	public static float groundBreakMargin()     { return f("commwars_groundBreakMargin"); }
@@ -108,11 +105,8 @@ public class CommWarsConfig {
 	// ---- item heists ----
 
 	public static int heistEscalation()         { return i("commwars_heistEscalation"); }
-	public static float heistOvermatch()        { return f("commwars_heistOvermatch"); }
-	public static float marinesPerSupply()      { return f("commwars_marinesPerSupply"); }
-	public static float heistMusterDays()       { return f("commwars_heistMusterDays"); }
-	public static int heistMusterPenalty()      { return i("commwars_heistMusterPenalty"); }
-	public static float musterCasualtyFraction(){ return f("commwars_musterCasualtyFraction"); }
+	public static float heistBreakMargin()      { return f("commwars_heistBreakMargin"); }
+	public static float heistForceMult()        { return f("commwars_heistForceMult"); }
 
 	// ---- strength gate & coalitions ----
 

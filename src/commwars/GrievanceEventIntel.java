@@ -9,15 +9,12 @@ import java.util.Map;
 import java.util.Set;
 
 import com.fs.starfarer.api.Global;
-import com.fs.starfarer.api.campaign.CargoAPI;
 import com.fs.starfarer.api.campaign.FactionAPI;
 import com.fs.starfarer.api.campaign.SpecialItemData;
 import com.fs.starfarer.api.campaign.econ.Industry;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
-import com.fs.starfarer.api.campaign.econ.SubmarketAPI;
 import com.fs.starfarer.api.campaign.comm.CommMessageAPI.MessageClickAction;
 import com.fs.starfarer.api.impl.campaign.ids.Industries;
-import com.fs.starfarer.api.impl.campaign.ids.Submarkets;
 import com.fs.starfarer.api.impl.campaign.intel.MessageIntel;
 import com.fs.starfarer.api.impl.campaign.intel.events.BaseEventIntel;
 import com.fs.starfarer.api.impl.campaign.intel.events.EventFactor;
@@ -76,12 +73,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	protected MarketAPI strikeSource = null;
 	protected List<String> strikeCommodities = null;
 	protected boolean strikeWasTacBomb = false;
-	protected boolean strikeLootTaken = false;
 	protected String strikeHeistIndustryId = null;
 	protected boolean strikeMilitaryMode = false;
-	protected String strikeLootSummary = null;
-	protected int strikeLootValue = 0;
-	protected Boolean strikeBrokeThrough = null;
+	protected Float cachedRaidStr = null;
+	protected Float cachedDefenderStr = null;
 
 	protected Long truceStart = null;
 	protected float truceDays = 0f;
@@ -515,7 +510,6 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		// military strikes break things rather than looting trade goods
 		this.strikeCommodities = militaryMode
 				? new ArrayList<String>() : getCauseCommodityIds();
-		this.strikeLootTaken = false;
 		this.strikeHeistIndustryId = heistIndustryId;
 		this.strikeMilitaryMode = militaryMode;
 		this.strikePartners = new ArrayList<String>(coalitionPartners);
@@ -528,12 +522,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		strikeSource = null;
 		strikeCommodities = null;
 		strikeWasTacBomb = false;
-		strikeLootTaken = false;
 		strikeHeistIndustryId = null;
 		strikeMilitaryMode = false;
-		strikeLootSummary = null;
-		strikeLootValue = 0;
-		strikeBrokeThrough = null;
+		cachedRaidStr = null;
+		cachedDefenderStr = null;
 		strikePartners = null;
 		lastStrikeEnd = Global.getSector().getClock().getTimestamp();
 	}
@@ -553,52 +545,56 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	 * raid connects (fleets still present), since defenses may have grown
 	 * since the fleet was committed.
 	 */
-	public boolean brokeGroundDefenses() {
-		if (strikeBrokeThrough != null) return strikeBrokeThrough;
-		if (strike == null || strikeTarget == null) return false;
-
+	/** Measure the raiders' ground strength vs the target's current defenses (cached). */
+	protected void measureGroundAssault() {
+		if (cachedRaidStr != null) return;
+		if (strike == null || strikeTarget == null) return;
 		float raidStr = 0f;
 		for (com.fs.starfarer.api.campaign.CampaignFleetAPI fleet : strike.getFleets()) {
 			raidStr += com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
 					.getRaidStr(fleet);
 		}
-		float defenderStr = com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
+		if (raidStr <= 0f) return; // fleets not present yet / all gone - retry later
+		cachedRaidStr = raidStr;
+		cachedDefenderStr = com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
 				.getDefenderStr(strikeTarget);
-
-		// no fleets left to measure (all destroyed / despawned): they clearly
-		// did not carry the ground assault
-		if (raidStr <= 0f) return false;
-
-		boolean broke = raidStr >= defenderStr * CommWarsConfig.groundBreakMargin();
-		strikeBrokeThrough = broke;
 		CommWarsConfig.log("Ground assault on " + strikeTarget.getName() + ": raid str "
-				+ (int) raidStr + " vs defender str " + (int) defenderStr + " (x margin "
-				+ CommWarsConfig.groundBreakMargin() + ") -> "
-				+ (broke ? "BROKE THROUGH" : "REPELLED"));
-		return broke;
+				+ (int) cachedRaidStr.floatValue() + " vs defender str "
+				+ (int) cachedDefenderStr.floatValue());
 	}
 
 	/**
-	 * Fires the theft as soon as the raid connects - but only if the raiders
-	 * actually broke the ground defenses. Called every manager tick while a
-	 * strike is active.
+	 * Did the raiders overcome the target's CURRENT ground defenses at the
+	 * given advantage margin? The same measure the game uses for the player's
+	 * own raids (fleet raid strength vs defender strength, defender strength
+	 * including any Planetary Shield and cargo marines). margin 1.0 = enough
+	 * to raid/disrupt; a much higher margin = the overwhelming advantage
+	 * needed to lift a strategic asset.
+	 */
+	public boolean brokeGround(float margin) {
+		measureGroundAssault();
+		if (cachedRaidStr == null) return false;
+		return cachedRaidStr >= cachedDefenderStr * margin;
+	}
+
+	/** Broke the ground enough to raid/disrupt at all. */
+	public boolean brokeGroundDefenses() {
+		return brokeGround(CommWarsConfig.groundBreakMargin());
+	}
+
+	/**
+	 * When the raid connects, attempt the item heist - but ONLY if the
+	 * raiders have the overwhelming ground advantage required to lift a
+	 * strategic asset. Called every manager tick while a strike is active.
 	 */
 	public void checkStrikeRaidHit() {
-		if (strike == null || strikeLootTaken) return;
+		if (strike == null) return;
 		if (strike.isAborted() || strike.isFailed()) return;
 		if (strike.getRaidAction() == null) return;
 		if (strike.getRaidAction().getSuccessFraction() <= 0f) return;
-		if (!brokeGroundDefenses()) return; // defenses held: nothing taken
+		if (strikeHeistIndustryId == null) return; // not a heist strike
+		if (!brokeGround(CommWarsConfig.heistBreakMargin())) return; // not enough to grab it
 
-		String loot = performTheft();
-		if (loot != null) {
-			announce(Misc.ucFirst(getFaction().getDisplayNameWithArticle())
-					+ " raiders have carried off part of "
-					+ (strikeTarget != null ? strikeTarget.getName() : "your colony")
-					+ "'s stockpiles: " + loot
-					+ (strikeSource != null ? " - bound for " + strikeSource.getName() + "." : "."),
-					Misc.getNegativeHighlightColor());
-		}
 		performItemTheft();
 	}
 
@@ -694,75 +690,6 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		return null;
 	}
 
-	/**
-	 * Carry off part of the contested goods from the target's resource
-	 * stockpiles and storage; loot lands in the source market's open market,
-	 * where it can be seen - and bought back. Returns a summary of what was
-	 * taken, or null if there was nothing to take.
-	 */
-	protected String performTheft() {
-		if (strikeTarget == null || strikeCommodities == null) return null;
-		strikeLootTaken = true;
-		int lootValue = 0;
-
-		CargoAPI destination = null;
-		if (strikeSource != null) {
-			SubmarketAPI open = strikeSource.getSubmarket(Submarkets.SUBMARKET_OPEN);
-			if (open != null) destination = open.getCargo();
-		}
-
-		StringBuilder summary = new StringBuilder();
-		for (String commodityId : strikeCommodities) {
-			int taken = 0;
-			for (String submarketId : new String[] {
-					Submarkets.LOCAL_RESOURCES, Submarkets.SUBMARKET_STORAGE }) {
-				SubmarketAPI sub = strikeTarget.getSubmarket(submarketId);
-				CargoAPI cargo = sub == null ? null : sub.getCargo();
-				if (cargo == null) {
-					CommWarsConfig.log("  theft: " + submarketId + " missing on "
-							+ strikeTarget.getName());
-					continue;
-				}
-				float have = cargo.getCommodityQuantity(commodityId);
-				int take = (int) (have * CommWarsConfig.stealFraction());
-				CommWarsConfig.log("  theft: " + submarketId + " " + commodityId
-						+ " have " + (int) have + ", taking " + take);
-				if (take >= 1) {
-					cargo.removeCommodity(commodityId, take);
-					taken += take;
-				}
-			}
-			if (taken > 0) {
-				if (destination != null) destination.addCommodity(commodityId, taken);
-				try {
-					lootValue += taken * Global.getSettings()
-							.getCommoditySpec(commodityId).getBasePrice();
-				} catch (Throwable t) {
-				}
-				// real market effect: plundered goods depress local availability
-				// for a while (on top of the raid's industry disruption)
-				try {
-					strikeTarget.getCommodityData(commodityId).getAvailableStat()
-							.addTemporaryModFlat(CommWarsConfig.plunderDays(),
-									"commwars_plunder", "Plundered stockpiles",
-									-CommWarsConfig.plunderPenalty());
-				} catch (Throwable t) {
-					CommWarsConfig.log("  plunder malus failed for " + commodityId + ": " + t);
-				}
-				if (summary.length() > 0) summary.append(", ");
-				summary.append(Misc.getWithDGS(taken)).append(" ");
-				try {
-					summary.append(Global.getSettings()
-							.getCommoditySpec(commodityId).getName().toLowerCase());
-				} catch (Throwable t) {
-					summary.append(commodityId);
-				}
-			}
-		}
-		this.strikeLootSummary = summary.length() > 0 ? summary.toString() : null;
-		this.strikeLootValue = lootValue;
-		return this.strikeLootSummary;
-	}
 
 	/**
 	 * Disrupt the offending (or military-track) industries for a guaranteed
@@ -804,15 +731,13 @@ public class GrievanceEventIntel extends BaseEventIntel {
 
 		String targetName = strikeTarget != null ? strikeTarget.getName() : "your colony";
 		String disruptSummary = null;
-		String lootSummary = null;
-		String sourceName = strikeSource != null ? strikeSource.getName() : null;
+		boolean tacBomb = strikeWasTacBomb;
 
 		if (broke) {
-			// they cracked the ground: theft and disruption both land, and
-			// they get their truce - the same ground check gates all of it,
+			// they cracked the ground: disruption lands (a heisted item was
+			// already lifted at connect-time, gated on a far higher advantage),
+			// and they get their truce - the same ground check gates all of it,
 			// exactly as it does for the player's own raids
-			if (!strikeLootTaken) performTheft();
-			lootSummary = strikeLootSummary;
 			disruptSummary = disruptIndustries();
 			if (!vendetta) {
 				truceStart = Global.getSector().getClock().getTimestamp();
@@ -820,10 +745,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			}
 			releasePartners(!vendetta);
 		} else {
-			// ground defenses held: nothing taken, nothing disrupted. No truce
-			// - they made no point - and they escalate, to come harder next
-			// time (eventually to bombardment, which a raid cannot substitute
-			// for). The bar stays where the launch left it.
+			// ground defenses held: nothing disrupted, no truce. They escalate,
+			// to come harder next time (eventually to bombardment, which a raid
+			// cannot substitute for). The bar stays where the launch left it.
 			escalation++;
 			releasePartners(false);
 		}
@@ -831,11 +755,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		// a persistent, readable record of the outcome
 		StrikeSummaryIntel summary = new StrikeSummaryIntel(factionId, targetName);
 		if (broke) {
-			if (lootSummary != null) summary.setLoot(lootSummary, strikeLootValue);
 			if (disruptSummary != null) {
 				summary.setDisrupt(disruptSummary, (int) CommWarsConfig.strikeDisruptDays());
 			}
-			summary.setBombarded(strikeWasTacBomb);
+			summary.setBombarded(tacBomb);
 		}
 		summary.finish();
 
@@ -855,10 +778,6 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
 					+ " enforcement action against " + targetName + " has run its course.";
 			if (disruptSummary != null) text += " Industries disrupted: " + disruptSummary + ".";
-			if (lootSummary != null) {
-				text += " Seized from local stockpiles: " + lootSummary
-						+ (sourceName != null ? " - carried off to " + sourceName + "." : ".");
-			}
 			text += " See the enforcement damage report in your intel.";
 		}
 		announce(text, broke ? Misc.getNegativeHighlightColor()
@@ -1556,12 +1475,11 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			EnforcementStrike.HeistPlan plan = EnforcementStrike.planHeist(
 					this, isMilitaryDominant(), getCauseCommodityIds());
 			if (plan != null) {
-				heistPreview = "READY: " + plan.industryId + " @ " + plan.market.getName()
-						+ " | marines " + (int) plan.capacity + "/" + (int) plan.neededMarines;
+				heistPreview = "item found: " + plan.industryId + " @ " + plan.market.getName()
+						+ " - lifts only on raidStr >= defenderStr x "
+						+ CommWarsConfig.heistBreakMargin();
 			} else {
-				heistPreview = "no viable plan (marine capacity "
-						+ (int) MilitaryScore.marineCapacity(getFaction())
-						+ ", or no stealable item in relevant industries)";
+				heistPreview = "no stealable item in a relevant industry";
 			}
 		}
 		info.addPara("heist next strike: %s", 3f, h, heistPreview);
