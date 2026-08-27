@@ -94,6 +94,12 @@
 	"commwars_heistMusterDays": 45,
 	"commwars_heistMusterPenalty": 2,
 
+	# Fraction of committed marines LOST as casualties at the minimum-force
+	# (overmatch = 1.0) level; the actual rate is this / overmatch, so a more
+	# overwhelming assault takes proportionally fewer losses. Only casualties
+	# are a lasting drain (survivors return); they recover over heistMusterDays
+	"commwars_musterCasualtyFraction": 0.4,
+
 	# Strength gate: a faction only presses demands (ultimatum/enforcement)
 	# while its military-industrial score - pooled with any coalition partners
 	# it can rally (mutually non-hostile aggrieved factions) - is at least

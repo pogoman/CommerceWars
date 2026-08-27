@@ -151,26 +151,40 @@ public class EnforcementStrike {
 
 	/** Mustering the operation visibly drains marines at their producing markets. */
 	public static void applyMusterMalus(FactionAPI faction, float neededMarines, float capacity) {
-		// how much of their marine corps this operation consumed: a heist
-		// against a fortress (huge marine need) drains most of it and leaves
-		// them unable to mount another until reserves rebuild; a soft target
-		// barely dents it
-		float drainFraction = capacity > 0 ? Math.min(1f, neededMarines / capacity) : 1f;
+		// The committed marines are not consumed - survivors return. Only
+		// CASUALTIES are a lasting drain, recovering as replacements are
+		// trained. Casualty rate falls the more overwhelming the force is
+		// (overmatch above the minimum reduces losses), so a lopsided heist
+		// against a soft target barely dents the corps, while one that forced
+		// them to scrape together every marine takes heavier proportional
+		// losses.
+		float overmatch = Math.max(1f, CommWarsConfig.heistOvermatch());
+		float casualtyRate = CommWarsConfig.musterCasualtyFraction() / overmatch;
+		float casualties = neededMarines * casualtyRate;
+
+		float totalProduction = 0f;
+		for (MarketAPI market : Misc.getFactionMarkets(faction, null)) {
+			totalProduction += MilitaryScore.marineProduction(market);
+		}
+		float casualtySupplyUnits = casualties / Math.max(1f, CommWarsConfig.marinesPerSupply());
+
 		for (MarketAPI market : Misc.getFactionMarkets(faction, null)) {
 			float production = MilitaryScore.marineProduction(market);
 			if (production <= 0) continue;
+			float share = totalProduction > 0 ? production / totalProduction : 1f;
 			int penalty = Math.max(CommWarsConfig.heistMusterPenalty(),
-					Math.round(production * drainFraction));
+					Math.round(casualtySupplyUnits * share));
 			try {
 				market.getCommodityData(com.fs.starfarer.api.impl.campaign.ids.Commodities.MARINES)
 						.getAvailableStat().addTemporaryModFlat(CommWarsConfig.heistMusterDays(),
-								"commwars_muster", "Marines mustered for operation", -penalty);
+								"commwars_muster", "Marine losses from the raid", -penalty);
 			} catch (Throwable t) {
 				CommWarsConfig.log("muster malus failed at " + market.getName() + ": " + t);
 			}
 		}
-		CommWarsConfig.log("Muster drain: needed " + (int) neededMarines + "/" + (int) capacity
-				+ " = " + Math.round(drainFraction * 100) + "% of marine capacity");
+		CommWarsConfig.log("Marine casualties: " + (int) casualties + " of " + (int) neededMarines
+				+ " committed (rate " + Math.round(casualtyRate * 100) + "%), recovering over "
+				+ (int) CommWarsConfig.heistMusterDays() + " days");
 	}
 
 	/** Largest market of the faction that can actually mount the strike. */

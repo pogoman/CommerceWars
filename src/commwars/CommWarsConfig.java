@@ -109,6 +109,7 @@ public class CommWarsConfig {
 	public static float marinesPerSupply()      { return f("commwars_marinesPerSupply"); }
 	public static float heistMusterDays()       { return f("commwars_heistMusterDays"); }
 	public static int heistMusterPenalty()      { return i("commwars_heistMusterPenalty"); }
+	public static float musterCasualtyFraction(){ return f("commwars_musterCasualtyFraction"); }
 
 	// ---- strength gate & coalitions ----
 
