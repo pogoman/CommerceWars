@@ -130,15 +130,10 @@ public class EnforcementStrike {
 			for (CampaignFleetAPI fleet : fleets) raidStr += MarketCMD.getRaidStr(fleet);
 		}
 
-		if (raidStr <= 0f) {
-			// their fleets are not yet close enough to assess; show the number
-			// the player actually controls and can act on
-			info.addPara("Ground assessment: your defender strength at " + target.getName()
-					+ " is %s (planetary shield and garrison marines included). The raiders' "
-					+ "strength will resolve as they close on the colony - keep your defenses "
-					+ "above it to repel them.", opad, h, Misc.getWithDGS((int) defenderStr));
-			return;
-		}
+		// their ground strength cannot be assessed until their fleets are
+		// close enough to scout (they are not spawned during the fleet's
+		// staging). Show nothing rather than an empty half-assessment.
+		if (raidStr <= 0f) return;
 
 		float margin = isHeist
 				? CommWarsConfig.heistBreakMargin() : CommWarsConfig.groundBreakMargin();

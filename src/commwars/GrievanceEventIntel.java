@@ -1378,6 +1378,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 						? " Coalition contingents from " + getPartnerNames(strikePartners)
 								+ " sail with them."
 						: ""), opad);
+			// ground assessment, in this properly-wrapped column (only shows
+			// once the raiders are close enough to measure)
+			if (isStrikeActive()) addGroundAssessment(info);
 		}
 	}
 
@@ -1404,7 +1407,6 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		} else if (isUltimatumReached() && isStrikeActive()) {
 			info.addPara("Enforcement fleets are underway - the time for negotiation has passed.",
 					Misc.getNegativeHighlightColor(), 10f);
-			addGroundAssessment(info);
 		}
 
 		if (!CommWarsConfig.debugMode()) return;
