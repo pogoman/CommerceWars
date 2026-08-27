@@ -78,6 +78,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	protected boolean strikeWasTacBomb = false;
 	protected boolean strikeLootTaken = false;
 	protected String strikeHeistIndustryId = null;
+	protected boolean strikeMilitaryMode = false;
+	protected String strikeLootSummary = null;
+	protected int strikeLootValue = 0;
 
 	protected Long truceStart = null;
 	protected float truceDays = 0f;
@@ -513,6 +516,7 @@ public class GrievanceEventIntel extends BaseEventIntel {
 				? new ArrayList<String>() : getCauseCommodityIds();
 		this.strikeLootTaken = false;
 		this.strikeHeistIndustryId = heistIndustryId;
+		this.strikeMilitaryMode = militaryMode;
 		this.strikePartners = new ArrayList<String>(coalitionPartners);
 	}
 
@@ -525,6 +529,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		strikeWasTacBomb = false;
 		strikeLootTaken = false;
 		strikeHeistIndustryId = null;
+		strikeMilitaryMode = false;
+		strikeLootSummary = null;
+		strikeLootValue = 0;
 		strikePartners = null;
 		lastStrikeEnd = Global.getSector().getClock().getTimestamp();
 	}
@@ -659,6 +666,7 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	protected String performTheft() {
 		if (strikeTarget == null || strikeCommodities == null) return null;
 		strikeLootTaken = true;
+		int lootValue = 0;
 
 		CargoAPI destination = null;
 		if (strikeSource != null) {
@@ -689,6 +697,11 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			}
 			if (taken > 0) {
 				if (destination != null) destination.addCommodity(commodityId, taken);
+				try {
+					lootValue += taken * Global.getSettings()
+							.getCommoditySpec(commodityId).getBasePrice();
+				} catch (Throwable t) {
+				}
 				// real market effect: plundered goods depress local availability
 				// for a while (on top of the raid's industry disruption)
 				try {
@@ -709,7 +722,40 @@ public class GrievanceEventIntel extends BaseEventIntel {
 				}
 			}
 		}
-		return summary.length() > 0 ? summary.toString() : null;
+		this.strikeLootSummary = summary.length() > 0 ? summary.toString() : null;
+		this.strikeLootValue = lootValue;
+		return this.strikeLootSummary;
+	}
+
+	/**
+	 * A successful strike must actually cut the player's contested production,
+	 * or it does nothing to ease the grievance. Guarantee it: disrupt the
+	 * offending industries directly (bypassing the shield/defense resistance
+	 * that a mere ground raid runs into) - production stops, market share
+	 * falls, and the dispute finally has a mechanism to cool. Returns a
+	 * summary of what was disrupted.
+	 */
+	protected String forceDisruptIndustries() {
+		if (strikeTarget == null) return null;
+		if (strikeWasTacBomb || strikeHeistIndustryId != null) return null; // own effects
+
+		List<String> industries = strikeMilitaryMode
+				? EnforcementStrike.findMilitaryIndustries(strikeTarget)
+				: EnforcementStrike.findOffendingIndustries(strikeTarget,
+						strikeCommodities != null ? strikeCommodities : getCauseCommodityIds());
+
+		float days = CommWarsConfig.strikeDisruptDays();
+		StringBuilder sb = new StringBuilder();
+		for (String industryId : industries) {
+			com.fs.starfarer.api.campaign.econ.Industry ind = strikeTarget.getIndustry(industryId);
+			if (ind == null) continue;
+			ind.setDisrupted(days, true);
+			if (sb.length() > 0) sb.append(", ");
+			sb.append(ind.getCurrentName());
+			CommWarsConfig.log("  force-disrupted " + industryId + " on "
+					+ strikeTarget.getName() + " for " + (int) days + " days");
+		}
+		return sb.length() > 0 ? sb.toString() : null;
 	}
 
 	/** Called by the manager when the strike ends with the raiders victorious. */
@@ -730,10 +776,24 @@ public class GrievanceEventIntel extends BaseEventIntel {
 
 		// normally the theft fired when the raid connected (checkStrikeRaidHit);
 		// this is the fallback in case resolution arrives first
-		String lootSummary = strikeLootTaken ? null : performTheft();
+		if (!strikeLootTaken) performTheft();
 
+		// the strike must actually cut contested production or it accomplishes
+		// nothing - guarantee the disruption
+		String disruptSummary = forceDisruptIndustries();
+
+		// a persistent, readable record of the damage
 		String targetName = strikeTarget != null ? strikeTarget.getName() : "your colony";
+		StrikeSummaryIntel summary = new StrikeSummaryIntel(factionId, targetName);
+		if (strikeLootSummary != null) summary.setLoot(strikeLootSummary, strikeLootValue);
+		if (disruptSummary != null) {
+			summary.setDisrupt(disruptSummary, (int) CommWarsConfig.strikeDisruptDays());
+		}
+		summary.setBombarded(strikeWasTacBomb);
+		summary.finish();
+
 		String sourceName = strikeSource != null ? strikeSource.getName() : null;
+		String lootSummary = strikeLootSummary;
 		clearStrike();
 
 		String text;
@@ -744,11 +804,14 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		} else {
 			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
 					+ " enforcement action against " + targetName + " has run its course.";
+			if (disruptSummary != null) {
+				text += " Industries disrupted: " + disruptSummary + ".";
+			}
 			if (lootSummary != null) {
 				text += " Seized from local stockpiles: " + lootSummary
 						+ (sourceName != null ? " - carried off to " + sourceName + "." : ".");
 			}
-			text += " A grudging commercial truce takes hold - for now.";
+			text += " See the enforcement damage report in your intel.";
 		}
 		announce(text, Misc.getNegativeHighlightColor());
 	}

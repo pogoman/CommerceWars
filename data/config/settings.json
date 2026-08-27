@@ -82,6 +82,14 @@
 	"commwars_plunderDays": 60,
 	"commwars_plunderPenalty": 2,
 
+	# A successful strike guarantees disruption of the offending industries
+	# for this many days (production stops, market share falls - the actual
+	# mechanism by which a strike eases the grievance). Bypasses the shield/
+	# defense resistance a plain ground raid hits. A persistent "enforcement
+	# damage" intel records each strike for strikeSummaryDays
+	"commwars_strikeDisruptDays": 90,
+	"commwars_strikeSummaryDays": 30,
+
 	# Item heists: at high escalation, strikes go after installed items
 	# (nanoforge, synchrotron...) in grievance-relevant industries. A heist is
 	# a ground operation - it targets ground defenses and needs marines
