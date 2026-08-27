@@ -150,18 +150,27 @@ public class EnforcementStrike {
 	}
 
 	/** Mustering the operation visibly drains marines at their producing markets. */
-	public static void applyMusterMalus(FactionAPI faction) {
+	public static void applyMusterMalus(FactionAPI faction, float neededMarines, float capacity) {
+		// how much of their marine corps this operation consumed: a heist
+		// against a fortress (huge marine need) drains most of it and leaves
+		// them unable to mount another until reserves rebuild; a soft target
+		// barely dents it
+		float drainFraction = capacity > 0 ? Math.min(1f, neededMarines / capacity) : 1f;
 		for (MarketAPI market : Misc.getFactionMarkets(faction, null)) {
-			if (MilitaryScore.marineProduction(market) <= 0) continue;
+			float production = MilitaryScore.marineProduction(market);
+			if (production <= 0) continue;
+			int penalty = Math.max(CommWarsConfig.heistMusterPenalty(),
+					Math.round(production * drainFraction));
 			try {
 				market.getCommodityData(com.fs.starfarer.api.impl.campaign.ids.Commodities.MARINES)
 						.getAvailableStat().addTemporaryModFlat(CommWarsConfig.heistMusterDays(),
-								"commwars_muster", "Marines mustered for operation",
-								-CommWarsConfig.heistMusterPenalty());
+								"commwars_muster", "Marines mustered for operation", -penalty);
 			} catch (Throwable t) {
 				CommWarsConfig.log("muster malus failed at " + market.getName() + ": " + t);
 			}
 		}
+		CommWarsConfig.log("Muster drain: needed " + (int) neededMarines + "/" + (int) capacity
+				+ " = " + Math.round(drainFraction * 100) + "% of marine capacity");
 	}
 
 	/** Largest market of the faction that can actually mount the strike. */
@@ -238,7 +247,7 @@ public class EnforcementStrike {
 			}
 			disrupt.add(heist.industryId);
 			params.raidParams.setDisrupt(disrupt.toArray(new String[0]));
-			applyMusterMalus(intel.getFaction());
+			applyMusterMalus(intel.getFaction(), heist.neededMarines, heist.capacity);
 		} else if (tacBomb) {
 			params.raidParams.setBombardment(BombardType.TACTICAL);
 		} else {
