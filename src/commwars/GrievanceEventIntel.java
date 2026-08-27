@@ -596,47 +596,11 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		if (strike == null || strikeTarget == null) return;
 		if (strikeWasTacBomb) {
 			info.addPara("Their intent is bombardment - a planetary shield blunts it, but "
-					+ "ground raids and shields will not stop the shells.", 5f);
+					+ "ground defenses will not stop the shells.", 5f);
 			return;
 		}
-		float raidStr = 0f;
-		for (com.fs.starfarer.api.campaign.CampaignFleetAPI fleet : strike.getFleets()) {
-			raidStr += com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
-					.getRaidStr(fleet);
-		}
-		if (raidStr <= 0f) return; // fleets not spawned/measurable yet
-		float defenderStr = com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
-				.getDefenderStr(strikeTarget);
-		Color h = Misc.getHighlightColor();
-		Color good = Misc.getPositiveHighlightColor();
-		Color bad = Misc.getNegativeHighlightColor();
-
-		float need = strikeHeistIndustryId != null
-				? CommWarsConfig.heistBreakMargin() : CommWarsConfig.groundBreakMargin();
-		boolean willBreak = raidStr >= defenderStr * need;
-		float ratio = defenderStr > 0 ? raidStr / defenderStr : 99f;
-
-		info.addPara("Ground assessment: their projected raid strength is %s against " + strikeTarget
-				.getName() + "'s defender strength %s (planetary shield and garrison marines "
-				+ "included).", 5f, h, Misc.getWithDGS((int) raidStr),
-				Misc.getWithDGS((int) defenderStr));
-		if (strikeHeistIndustryId != null) {
-			info.addPara(willBreak
-					? "They have the overwhelming advantage needed to seize the installed asset."
-					: "They lack the overwhelming advantage needed to seize an installed asset - "
-							+ "your defenses should hold the vault (they need a " + need
-							+ "-to-1 ground advantage; they have "
-							+ Misc.getRoundedValueMaxOneAfterDecimal(ratio) + ").",
-					3f, willBreak ? bad : good, willBreak ? "" : "your defenses should hold");
-		} else {
-			info.addPara(willBreak
-					? "They can break your ground defenses - expect industries disrupted if this "
-							+ "lands."
-					: "Your ground defenses should repel this - they cannot break through (they "
-							+ "need a " + need + "-to-1 advantage; they have "
-							+ Misc.getRoundedValueMaxOneAfterDecimal(ratio) + ").",
-					3f, willBreak ? bad : good, willBreak ? "" : "should repel this");
-		}
+		EnforcementStrike.appendGroundAssessment(info, strike.getFleets(), strikeTarget,
+				strikeHeistIndustryId != null, 5f);
 	}
 
 	/**

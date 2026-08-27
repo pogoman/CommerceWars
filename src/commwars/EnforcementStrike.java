@@ -6,9 +6,13 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
+import java.awt.Color;
+
 import com.fs.starfarer.api.Global;
+import com.fs.starfarer.api.campaign.CampaignFleetAPI;
 import com.fs.starfarer.api.campaign.FactionAPI;
 import com.fs.starfarer.api.campaign.econ.Industry;
+import com.fs.starfarer.api.ui.TooltipMakerAPI;
 import com.fs.starfarer.api.impl.campaign.command.WarSimScript;
 import com.fs.starfarer.api.campaign.econ.MarketAPI;
 import com.fs.starfarer.api.campaign.econ.MutableCommodityQuantity;
@@ -100,6 +104,67 @@ public class EnforcementStrike {
 	public static class HeistPlan {
 		public MarketAPI market;
 		public String industryId;
+	}
+
+	/**
+	 * Ground-side assessment for an inbound enforcement raid, shown on both
+	 * the enforcement-action intel and the grievance screen. Vanilla's own
+	 * assessment judges only the SPACE fight ("N fleets, defenders outmatched,
+	 * likely success") and can read "success" while a shielded, fortified
+	 * colony repels the landing. This shows the ground truth: the raiders'
+	 * strength (once their fleets are close enough to measure) against the
+	 * target's CURRENT defender strength - shield and garrison marines
+	 * included - so the player can judge whether to reinforce before arrival.
+	 */
+	public static void appendGroundAssessment(TooltipMakerAPI info,
+			List<CampaignFleetAPI> fleets, MarketAPI target, boolean isHeist, float opad) {
+		if (target == null) return;
+		Color h = Misc.getHighlightColor();
+		Color good = Misc.getPositiveHighlightColor();
+		Color bad = Misc.getNegativeHighlightColor();
+
+		float defenderStr = MarketCMD.getDefenderStr(target);
+
+		float raidStr = 0f;
+		if (fleets != null) {
+			for (CampaignFleetAPI fleet : fleets) raidStr += MarketCMD.getRaidStr(fleet);
+		}
+
+		if (raidStr <= 0f) {
+			// their fleets are not yet close enough to assess; show the number
+			// the player actually controls and can act on
+			info.addPara("Ground assessment: your defender strength at " + target.getName()
+					+ " is %s (planetary shield and garrison marines included). The raiders' "
+					+ "strength will resolve as they close on the colony - keep your defenses "
+					+ "above it to repel them.", opad, h, Misc.getWithDGS((int) defenderStr));
+			return;
+		}
+
+		float margin = isHeist
+				? CommWarsConfig.heistBreakMargin() : CommWarsConfig.groundBreakMargin();
+		boolean willBreak = raidStr >= defenderStr * margin;
+		float ratio = defenderStr > 0 ? raidStr / defenderStr : 99f;
+
+		info.addPara("Ground assessment: their raid strength %s against " + target.getName()
+				+ "'s defender strength %s (planetary shield and garrison marines included) - "
+				+ "a %s-to-1 ground ratio.", opad, h,
+				Misc.getWithDGS((int) raidStr), Misc.getWithDGS((int) defenderStr),
+				Misc.getRoundedValueMaxOneAfterDecimal(ratio));
+
+		if (isHeist) {
+			info.addPara(willBreak
+					? "They have the overwhelming advantage needed to storm the vault and seize "
+							+ "the installed asset."
+					: "They lack the overwhelming advantage needed to seize an installed asset "
+							+ "(they need " + margin + "-to-1) - your defenses should hold it.",
+					3f, willBreak ? bad : good, willBreak ? "" : "should hold it");
+		} else {
+			info.addPara(willBreak
+					? "They can break your ground defenses - expect industries disrupted if this "
+							+ "lands."
+					: "Your ground defenses should repel this - they cannot break through.",
+					3f, willBreak ? bad : good, willBreak ? "" : "should repel this");
+		}
 	}
 
 	/**
@@ -281,9 +346,9 @@ public class EnforcementStrike {
 			List<String> members = new ArrayList<String>();
 			members.add(intel.getFactionId());
 			members.addAll(intel.getCoalitionPartners());
-			raid = new CoalitionRaidFGI(params, members);
+			raid = new CoalitionRaidFGI(params, members, heist != null);
 		} else {
-			raid = new GenericRaidFGI(params);
+			raid = new EnforcementRaidFGI(params, heist != null);
 		}
 		Global.getSector().getIntelManager().addIntel(raid);
 

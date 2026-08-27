@@ -2,21 +2,20 @@ package commwars;
 
 import java.util.List;
 
-import com.fs.starfarer.api.impl.campaign.intel.group.GenericRaidFGI;
-
 /**
  * A coalition enforcement action: one fleet group whose fleets are drawn
  * round-robin from every member faction's rosters - League cruisers flying
  * alongside Hegemony wolfpacks. The anchor faction leads (intel, flag,
- * hostility); the hulls tell the story.
+ * hostility); the hulls tell the story. Inherits the ground-assessment intel
+ * section from {@link EnforcementRaidFGI}.
  */
-public class CoalitionRaidFGI extends GenericRaidFGI {
+public class CoalitionRaidFGI extends EnforcementRaidFGI {
 
 	protected List<String> members;
 	protected int fleetCounter = 0;
 
-	public CoalitionRaidFGI(GenericRaidParams params, List<String> members) {
-		super(params);
+	public CoalitionRaidFGI(GenericRaidParams params, List<String> members, boolean heist) {
+		super(params, heist);
 		this.members = members;
 	}
 
