@@ -11,10 +11,10 @@
 	#  - the aggrieved faction must hold at least minFactionShare percent
 	#  - the faction must be among the top topProducers producers (not counting you)
 	#  - your share must be at least noticeFraction of theirs
-	"commwars_minPlayerShare": 20,
+	"commwars_minPlayerShare": 10,
 	"commwars_minFactionShare": 10,
-	"commwars_topProducers": 3,
-	"commwars_noticeFraction": 0.5,
+	"commwars_topProducers": 10,
+	"commwars_noticeFraction": 1,
 
 	# Resentment accrual (event bar runs 0-600; warning at 200, ultimatum at
 	# 400, enforcement at 600). Monthly progress per contested commodity is
@@ -26,7 +26,7 @@
 	# reaches startThreshold; at most maxActiveGrievances are open sector-wide
 	# (the angriest factions win the slots)
 	"commwars_startThreshold": 5.0,
-	"commwars_maxActiveGrievances": 3,
+	"commwars_maxActiveGrievances": 10,
 
 	# Cooling off: monthly drain while a faction has no active causes against
 	# you, and days of total calm (no causes, bar at zero) before the
@@ -46,7 +46,7 @@
 	# military-industrial score (see debug screen) rivals their own.
 	# Suppressed while commissioned with that faction; resigning the
 	# commission spikes resentment
-	"commwars_milNoticeFraction": 0.6,
+	"commwars_milNoticeFraction": 0.8,
 	"commwars_milMinPlayerScore": 30,
 	"commwars_milWeightMult": 6.0,
 	"commwars_maxMonthlyMilitary": 15,
@@ -60,7 +60,10 @@
 	# industries; a truce follows
 	"commwars_strikeBaseDifficulty": 20,
 	"commwars_strikeEscalationMult": 0.5,
-	"commwars_strikeMaxDifficulty": 150,
+	# loose sanity ceiling only - the real limit is meant to be capacity (the
+	# faction's military-industrial base). 150 was tuned for single-target
+	# strikes and strangled coalitions once strikes split across members
+	"commwars_strikeMaxDifficulty": 400,
 
 	# Grounded scaling: strikes aim to beat the target's actual defenses
 	# (patrols + station strength x overmatch, converted to difficulty via
@@ -91,8 +94,11 @@
 	# CURRENT ground defenses - the same check the game applies to the
 	# player's own raids. Their total fleet raid strength must reach this
 	# multiple of the defender strength (which includes Planetary Shield,
-	# marines in cargo). Below it: repelled, nothing taken or disrupted
+	# marines in cargo). Below it: repelled, nothing taken or disrupted -
+	# though a bombardment strike still lands its bombardment; ground
+	# defenses stop the landing force, not the shells
 	"commwars_groundBreakMargin": 1.0,
+	"commwars_groundStrPerFleetPoint": 80.0,
 
 	"commwars_heistEscalation": 2,
 	# Item heist: lifting an installed item (nanoforge...) takes an
@@ -118,6 +124,13 @@
 	"commwars_gateEnabled": true,
 	"commwars_deferToVanillaCrises": true,
 
+	# Pather peace: a permanent agreement with the Luddic Path (the vanilla
+	# "holy peace until the End of Days" - earned via the vanilla questline or
+	# by handing over the planetkiller) ends any Luddic Path grievance for good
+	# and blocks a new one from opening while it holds. Overrides even a blood
+	# feud. Reads the vanilla $patherAgreementPermanent flag directly
+	"commwars_patherAgreementPeace": true,
+
 	# Total War: strips story-critical protection from every market, so any
 	# world can be saturation-bombed down (size -1 per bombardment) and
 	# destroyed at size 4 or below - factions can be entirely eliminated.
@@ -137,6 +150,11 @@
 	"commwars_coalitionDropoutChance": 0.5,
 	"commwars_coalitionDropoutDays": 180,
 	"commwars_coalitionMinAnger": 200,
+	# washing their hands of a defeated coalition also vents the quitter's own
+	# resentment to this level - below coalitionMinAnger, so rejoining takes
+	# the dropout timer AND months of re-accrual (or never, if the player
+	# fixes their causes meanwhile)
+	"commwars_dropoutVentProgress": 100,
 
 	# Retaliation (phase 6): the player's own raids/bombardments against a
 	# faction with an active grievance spike its resentment instantly - and

@@ -37,7 +37,13 @@ public class MilitaryScore {
 	}
 
 	public static float marketScore(MarketAPI market) {
-		float score = market.getSize();
+		// military infrastructure ONLY - no flat size term. Counting market
+		// size let factions with many scattered civilian markets (the
+		// independents, above all) sum a paper army that outranked genuinely
+		// militarized powers; a trade port with no garrison command projects
+		// no force. Size still matters indirectly: bigger markets support
+		// bigger military industries.
+		float score = 0f;
 		for (Industry ind : market.getIndustries()) {
 			// disrupted or unbuilt infrastructure projects no force
 			if (!ind.isFunctional()) continue;

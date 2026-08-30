@@ -68,12 +68,17 @@ public class CoalitionCalc {
 			FactionAPI otherFaction = Global.getSector().getFaction(other);
 			if (otherFaction == null) continue;
 			if (faction.isHostileTo(otherFaction)) continue;
-			// a faction only fights for someone else's grievance if it is
-			// meaningfully angry itself - settlements can buy partners out
 			GrievanceEventIntel otherIntel = GrievanceEventIntel.get(other);
 			if (otherIntel == null) continue;
-			if (otherIntel.getProgress() < CommWarsConfig.coalitionMinAnger()
-					&& otherIntel.getSupportingStrikeFor() == null) {
+			// a faction with fleets already committed to an enforcement action -
+			// its own, or backing another's - is not available for a new coalition
+			if (otherIntel.isStrikeActive()
+					|| otherIntel.getSupportingStrikeFor() != null) {
+				continue;
+			}
+			// a faction only fights for someone else's grievance if it is
+			// meaningfully angry itself - settlements can buy partners out
+			if (otherIntel.getProgress() < CommWarsConfig.coalitionMinAnger()) {
 				continue;
 			}
 			result.add(other);
@@ -87,6 +92,35 @@ public class CoalitionCalc {
 			total += MilitaryScore.factionScore(Global.getSector().getFaction(partner));
 		}
 		return total;
+	}
+
+	/**
+	 * One coalition anchor at a time, SECTOR-WIDE: of every too-weak faction
+	 * that could front a coalition this tick, only the strongest actually
+	 * does - the rest stay gated (and back the anchor's bloc where eligible).
+	 * A per-pool leadership contest is not enough: two weak factions whose
+	 * mutual anger is below the partner threshold never appear in each
+	 * other's pools, so each crowns itself leader of "its own" bloc borrowed
+	 * from the same strong backers - N overlapping coalition screens again.
+	 * Frozen grievances (fleets committed) keep their state and don't compete.
+	 */
+	public static String computeBlocAnchor(Collection<GrievanceEventIntel> active) {
+		float threshold = gateThreshold();
+		String anchor = null;
+		float best = -1f;
+		for (GrievanceEventIntel intel : active) {
+			if (intel.isStrikeActive() || intel.getSupportingStrikeFor() != null) continue;
+			FactionAPI faction = intel.getFaction();
+			if (faction == null) continue;
+			float own = MilitaryScore.factionScore(faction);
+			if (own >= threshold) continue; // presses solo, needs no coalition
+			if (own > best || (own == best && anchor != null
+					&& intel.getFactionId().compareTo(anchor) < 0)) {
+				best = own;
+				anchor = intel.getFactionId();
+			}
+		}
+		return anchor;
 	}
 
 	public static float gateThreshold() {

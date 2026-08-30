@@ -69,6 +69,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	protected int totalTributePaid = 0;
 
 	protected GenericRaidFGI strike = null;
+	// a coalition strikes as several raids at once, one per member under its own
+	// flag; the anchor's is `strike` (tracked for consequences), the partners'
+	// contingents are here so the ground assault is judged on the COMBINED force
+	protected List<GenericRaidFGI> supportRaids = new ArrayList<GenericRaidFGI>();
 	protected MarketAPI strikeTarget = null;
 	protected MarketAPI strikeSource = null;
 	protected List<String> strikeCommodities = null;
@@ -177,8 +181,8 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	public void updateCommissionState() {
 		boolean now = factionId.equals(Misc.getCommissionFactionId());
 		if (wasCommissioned && !now) {
-			setProgress(Math.min(getMaxProgress(),
-					getProgress() + CommWarsConfig.commissionLapseSpike()));
+			addFactor(new RetaliationFactor(CommWarsConfig.commissionLapseSpike(),
+					"Resigned their commission"));
 			CommWarsConfig.log("Commission with " + factionId + " ended: +"
 					+ CommWarsConfig.commissionLapseSpike() + " resentment");
 			announce("Word spreads that you no longer serve under "
@@ -291,6 +295,49 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			names.add(faction != null ? faction.getDisplayName() : id);
 		}
 		return Misc.getAndJoined(names.toArray(new String[0]));
+	}
+
+	/**
+	 * A labelled bullet listing faction names, each highlighted in its own
+	 * faction colour (e.g. "In coalition with: Tri-Tachyon, the independents,
+	 * and the Hegemony" with each name in its faction's UI colour).
+	 */
+	protected void addFactionListPara(TooltipMakerAPI info, String label, List<String> ids,
+									  float pad) {
+		if (ids == null || ids.isEmpty()) return;
+		List<String> names = new ArrayList<String>();
+		List<Color> colors = new ArrayList<Color>();
+		for (String id : ids) {
+			FactionAPI f = Global.getSector().getFaction(id);
+			names.add(f != null ? f.getDisplayName() : id);
+			colors.add(f != null ? f.getBaseUIColor() : Misc.getHighlightColor());
+		}
+		info.addPara(label + ": " + Misc.getAndJoined(names.toArray(new String[0])), pad,
+				colors.toArray(new Color[0]), names.toArray(new String[0]));
+	}
+
+	/**
+	 * Add a prose paragraph, colouring this faction's name and any coalition,
+	 * strike, or backed-partner name that appears in it - each in its own
+	 * faction colour, the same way the announcement messages are coloured.
+	 */
+	protected void addColoredFactionPara(TooltipMakerAPI info, String text, float pad) {
+		List<String> names = new ArrayList<String>();
+		List<Color> colors = new ArrayList<Color>();
+		names.add(getFaction().getDisplayName());
+		colors.add(getFaction().getBaseUIColor());
+		List<String> others = new ArrayList<String>(coalitionPartners);
+		if (strikePartners != null) {
+			for (String id : strikePartners) if (!others.contains(id)) others.add(id);
+		}
+		for (String id : getBackedFactions()) if (!others.contains(id)) others.add(id);
+		for (String id : others) {
+			FactionAPI f = Global.getSector().getFaction(id);
+			if (f == null || !text.contains(f.getDisplayName())) continue;
+			names.add(f.getDisplayName());
+			colors.add(f.getBaseUIColor());
+		}
+		info.addPara(text, pad, colors.toArray(new Color[0]), names.toArray(new String[0]));
 	}
 
 	public void setGateState(boolean nowEmboldened, List<String> partners) {
@@ -435,6 +482,28 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		endAfterDelay();
 	}
 
+	/**
+	 * A permanent pather agreement now stands (the vanilla "holy peace until the
+	 * End of Days", however earned): end this grievance for good. Peace overrides
+	 * everything - even a blood feud - because the agreement is itself the Path
+	 * standing down permanently. Idempotent; the manager will not reopen a Path
+	 * grievance while the agreement holds.
+	 */
+	public void endForPatherPeace() {
+		if (isEnding() || isEnded()) return;
+		// call off any strike already in flight so it does not resolve after peace
+		if (isStrikeActive()) {
+			clearStrike();
+		}
+		CommWarsConfig.log("Grievance with " + factionId
+				+ " ends: permanent pather agreement (holy peace) in effect");
+		announce("An understanding stands between your polity and "
+				+ getFaction().getDisplayNameWithArticle() + ": holy peace, until the End of "
+				+ "Days. Their cells stand down and their grievance is laid to rest - "
+				+ "permanently.", Misc.getPositiveHighlightColor());
+		endAfterDelay();
+	}
+
 	public String getSupportingStrikeFor() {
 		return supportingStrikeFor;
 	}
@@ -498,8 +567,112 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		this.lastStrikeMath = lastStrikeMath;
 	}
 
+	/**
+	 * The joint operation is active while ANY contingent - the anchor's raid
+	 * or a coalition partner's - is still in play. The anchor's fleets being
+	 * wiped does not end a coalition strike whose partners are still inbound.
+	 */
 	public boolean isStrikeActive() {
-		return strike != null && !strike.isEnded() && !strike.isEnding();
+		if (strike != null && !strike.isEnded() && !strike.isEnding()) return true;
+		if (supportRaids != null) {
+			for (GenericRaidFGI raid : supportRaids) {
+				if (raid != null && !raid.isEnded() && !raid.isEnding()) return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Convert any of this strike's raids still carrying launch-time TACTICAL
+	 * bombardment orders (from a save made before payloads became adaptive)
+	 * to the adaptive payload, each contingent handed the hit-list for its
+	 * own grievance. Called by the manager's strike poll; idempotent.
+	 */
+	public void retrofitAdaptiveRaids() {
+		if (vendetta) return;
+		if (strikeTarget == null) return;
+		// old saves recorded the launch-time bombardment intent on the
+		// grievance too; only a vendetta is a committed bombardment now
+		strikeWasTacBomb = false;
+		List<GenericRaidFGI> all = new ArrayList<GenericRaidFGI>();
+		if (strike != null) all.add(strike);
+		if (supportRaids != null) all.addAll(supportRaids);
+		for (GenericRaidFGI raid : all) {
+			if (!(raid instanceof EnforcementRaidFGI)) continue;
+			if (raid.isEnded() || raid.isEnding()) continue;
+			String raidFactionId = raid.getParams() != null
+					? raid.getParams().factionId : factionId;
+			GrievanceEventIntel memberIntel = factionId.equals(raidFactionId)
+					? this : get(raidFactionId);
+			List<String> industries = EnforcementStrike.memberDisruptIndustries(
+					memberIntel, strikeTarget,
+					strikeCommodities != null ? strikeCommodities : getCauseCommodityIds(),
+					strikeMilitaryMode);
+			((EnforcementRaidFGI) raid).retrofitAdaptive(industries,
+					escalation >= CommWarsConfig.tacBombEscalation());
+		}
+	}
+
+	/**
+	 * Every contingent's fleet-by-fleet operations, faction-prefixed when more
+	 * than one faction flew - the ground truth the after-action summary must
+	 * agree with.
+	 */
+	protected List<String> collectOperations() {
+		List<String> result = new ArrayList<String>();
+		List<GenericRaidFGI> all = new ArrayList<GenericRaidFGI>();
+		if (strike != null) all.add(strike);
+		if (supportRaids != null) all.addAll(supportRaids);
+		boolean multi = all.size() > 1;
+		for (GenericRaidFGI raid : all) {
+			if (!(raid instanceof EnforcementRaidFGI)) continue;
+			String prefix = "";
+			if (multi && raid.getParams() != null && raid.getParams().factionId != null) {
+				FactionAPI f = Global.getSector().getFaction(raid.getParams().factionId);
+				if (f != null) prefix = f.getDisplayName() + ": ";
+			}
+			for (String entry : ((EnforcementRaidFGI) raid).getOperationsLog()) {
+				result.add(prefix + entry);
+			}
+		}
+		return result;
+	}
+
+	/** This contingent's fate is settled - succeeded, beaten, or otherwise over. */
+	protected boolean raidResolved(GenericRaidFGI raid) {
+		if (raid == null) return true;
+		return raid.isSucceeded() || raid.isFailed() || raid.isAborted()
+				|| raid.isEnding() || raid.isEnded();
+	}
+
+	/**
+	 * Every contingent of the joint operation has run its course - only then
+	 * is the strike as a whole judged. An individual contingent being wiped
+	 * while others still sail is not an outcome, just a casualty report.
+	 */
+	public boolean allStrikeRaidsResolved() {
+		if (!raidResolved(strike)) return false;
+		if (supportRaids != null) {
+			for (GenericRaidFGI raid : supportRaids) {
+				if (!raidResolved(raid)) return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Did ANY contingent complete its raid? A coalition strike succeeds as a
+	 * whole if any member's forces delivered their payload - and is only
+	 * DEFEATED when every last contingent was beaten or driven off.
+	 */
+	public boolean anyStrikeRaidSucceeded() {
+		if (strike != null && strike.isSucceeded()) return true;
+		if (supportRaids != null) {
+			for (GenericRaidFGI raid : supportRaids) {
+				if (raid != null && raid.isSucceeded()) return true;
+			}
+		}
+		return false;
 	}
 
 	public void setStrike(GenericRaidFGI strike, MarketAPI target, MarketAPI source,
@@ -514,11 +687,44 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		this.strikeHeistIndustryId = heistIndustryId;
 		this.strikeMilitaryMode = militaryMode;
 		this.strikePartners = new ArrayList<String>(coalitionPartners);
+		if (supportRaids == null) supportRaids = new ArrayList<GenericRaidFGI>();
+		supportRaids.clear();
+	}
+
+	/** Register a coalition partner's contingent flying alongside the anchor's raid. */
+	public void addSupportRaid(GenericRaidFGI raid) {
+		if (supportRaids == null) supportRaids = new ArrayList<GenericRaidFGI>();
+		if (raid != null) supportRaids.add(raid);
+	}
+
+	/**
+	 * Every fleet attacking the ANCHOR'S target colony - the anchor's raid
+	 * plus any coalition contingent striking the same colony - so its ground
+	 * assault is judged on the force actually landing there. Contingents
+	 * hitting OTHER colonies (each chases its own grievance's producer) fight
+	 * their own ground battles via their adaptive payloads and are excluded.
+	 */
+	public List<com.fs.starfarer.api.campaign.CampaignFleetAPI> allStrikeFleets() {
+		List<com.fs.starfarer.api.campaign.CampaignFleetAPI> result =
+				new ArrayList<com.fs.starfarer.api.campaign.CampaignFleetAPI>();
+		if (strike != null) result.addAll(strike.getFleets());
+		if (supportRaids != null) {
+			for (GenericRaidFGI raid : supportRaids) {
+				if (raid == null || raid.isEnded() || raid.isEnding()) continue;
+				if (raid instanceof EnforcementRaidFGI && strikeTarget != null
+						&& ((EnforcementRaidFGI) raid).getGroundTarget() != strikeTarget) {
+					continue; // fighting on another front
+				}
+				result.addAll(raid.getFleets());
+			}
+		}
+		return result;
 	}
 
 	public void clearStrike() {
 		releasePartners(false); // no-op for partners already released with a truce
 		strike = null;
+		if (supportRaids != null) supportRaids.clear();
 		strikeTarget = null;
 		strikeSource = null;
 		strikeCommodities = null;
@@ -552,7 +758,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		if (strike == null || strikeTarget == null) return;
 		float raidStr = 0f;
 		int fleets = 0;
-		for (com.fs.starfarer.api.campaign.CampaignFleetAPI fleet : strike.getFleets()) {
+		// count every coalition contingent's fleets, not just the anchor's, so
+		// the ground assault is judged on the combined force that actually lands
+		for (com.fs.starfarer.api.campaign.CampaignFleetAPI fleet : allStrikeFleets()) {
 			raidStr += com.fs.starfarer.api.impl.campaign.rulecmd.salvage.MarketCMD
 					.getRaidStr(fleet);
 			fleets++;
@@ -599,8 +807,23 @@ public class GrievanceEventIntel extends BaseEventIntel {
 					+ "ground defenses will not stop the shells.", 5f);
 			return;
 		}
-		EnforcementStrike.appendGroundAssessment(info, strike.getFleets(), strikeTarget,
-				strikeHeistIndustryId != null, 5f);
+		// project the combined force converging on THIS colony (anchor plus any
+		// contingent striking the same target), matching how the ground assault
+		// is actually judged when it connects - other-front contingents excluded
+		float projected = 0f;
+		if (strike instanceof EnforcementRaidFGI) {
+			projected += ((EnforcementRaidFGI) strike).getProjectedRaidStr();
+		}
+		if (supportRaids != null) {
+			for (GenericRaidFGI raid : supportRaids) {
+				if (raid instanceof EnforcementRaidFGI && !raid.isEnded() && !raid.isEnding()
+						&& ((EnforcementRaidFGI) raid).getGroundTarget() == strikeTarget) {
+					projected += ((EnforcementRaidFGI) raid).getProjectedRaidStr();
+				}
+			}
+		}
+		EnforcementStrike.appendGroundAssessment(info, allStrikeFleets(), strikeTarget,
+				strikeHeistIndustryId != null, projected, 5f);
 	}
 
 	/**
@@ -747,6 +970,27 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		return sb.length() > 0 ? sb.toString() : null;
 	}
 
+	/**
+	 * Did any contingent of this strike actually fire a bombardment? Raids
+	 * decide their payload in real time (see EnforcementRaidFGI), so whether
+	 * shells flew is a fact of the raid, not a launch-time intent.
+	 */
+	public boolean anyBombardmentDone() {
+		if (strike instanceof EnforcementRaidFGI
+				&& ((EnforcementRaidFGI) strike).isDidBombard()) {
+			return true;
+		}
+		if (supportRaids != null) {
+			for (GenericRaidFGI raid : supportRaids) {
+				if (raid instanceof EnforcementRaidFGI
+						&& ((EnforcementRaidFGI) raid).isDidBombard()) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	/** Called by the manager when the strike's fleets complete their operation. */
 	public void onStrikeSucceeded() {
 		if (strike == null) return;
@@ -757,7 +1001,8 @@ public class GrievanceEventIntel extends BaseEventIntel {
 
 		String targetName = strikeTarget != null ? strikeTarget.getName() : "your colony";
 		String disruptSummary = null;
-		boolean tacBomb = strikeWasTacBomb;
+		// vendetta = committed saturation; otherwise report what actually happened
+		boolean tacBomb = strikeWasTacBomb || anyBombardmentDone();
 
 		if (broke) {
 			// they cracked the ground: disruption lands (a heisted item was
@@ -783,33 +1028,45 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		summary.setOutcome(broke, cachedFleetCount,
 				cachedRaidStr != null ? (int) cachedRaidStr.floatValue() : 0,
 				cachedDefenderStr != null ? (int) cachedDefenderStr.floatValue() : 0);
-		if (broke) {
-			if (disruptSummary != null) {
-				summary.setDisrupt(disruptSummary, (int) CommWarsConfig.strikeDisruptDays());
-			}
-			summary.setBombarded(tacBomb);
+		if (broke && disruptSummary != null) {
+			summary.setDisrupt(disruptSummary, (int) CommWarsConfig.strikeDisruptDays());
 		}
+		// a bombardment is not gated on the ground break - it lands (and does its
+		// disruption/stability damage) even when the landing force is repelled
+		summary.setBombarded(tacBomb, vendetta);
+		// the fleet-by-fleet operations, so the summary's narrative and the
+		// blow-by-blow reality can't contradict each other
+		summary.setOperations(collectOperations());
 		summary.finish();
 
 		clearStrike();
 
 		String text;
-		if (!broke) {
+		if (vendetta) {
+			// a saturation bombardment is not stopped by ground defenses -
+			// whatever the ground math said, the shells landed
+			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
+					+ "'s retribution fleets have done their work at " + targetName + ". "
+					+ "The blood debt is not settled - it is merely fed.";
+		} else if (!broke && tacBomb) {
+			text = "Your ground defenses repelled " + Misc.ucFirst(getFaction()
+					.getDisplayNameWithArticle()) + "'s landing force at " + targetName
+					+ " - nothing was taken on the ground. But their tactical bombardment "
+					+ "struck home, disrupting military infrastructure and costing stability. "
+					+ "They withdraw, and will return in greater force. See the enforcement "
+					+ "damage report in your intel.";
+		} else if (!broke) {
 			text = "Your ground defenses repelled " + Misc.ucFirst(getFaction()
 					.getDisplayNameWithArticle()) + "'s enforcement action against " + targetName
 					+ " - nothing taken, nothing disrupted. They withdraw, and will return in "
 					+ "greater force. See the enforcement damage report in your intel.";
-		} else if (vendetta) {
-			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
-					+ "'s retribution fleets have done their work at " + targetName + ". "
-					+ "The blood debt is not settled - it is merely fed.";
 		} else {
 			text = Misc.ucFirst(getFaction().getDisplayNameWithArticle())
 					+ " enforcement action against " + targetName + " has run its course.";
 			if (disruptSummary != null) text += " Industries disrupted: " + disruptSummary + ".";
 			text += " See the enforcement damage report in your intel.";
 		}
-		announce(text, broke ? Misc.getNegativeHighlightColor()
+		announce(text, (broke || tacBomb) ? Misc.getNegativeHighlightColor()
 				: Misc.getPositiveHighlightColor());
 	}
 
@@ -830,9 +1087,21 @@ public class GrievanceEventIntel extends BaseEventIntel {
 				if (Math.random() < CommWarsConfig.coalitionDropoutChance()) {
 					CoalitionCalc.demoralize(partner);
 					dropouts.add(partner);
+					// washing their hands is not a pose: the quitter's own
+					// resentment vents below the coalition threshold, so
+					// rejoining takes the dropout timer AND months of fresh
+					// anger - a defeat genuinely shrinks the next coalition
+					GrievanceEventIntel quitter = get(partner);
+					if (quitter != null) {
+						quitter.setProgress(Math.min(quitter.getProgress(),
+								CommWarsConfig.dropoutVentProgress()));
+					}
 				}
 			}
 		}
+		// a faction that washes its hands leaves the roster NOW - not on the
+		// next slow gate recompute, days after the announcement said it left
+		coalitionPartners.removeAll(dropouts);
 		clearStrike();
 
 		String text = "The " + getFaction().getDisplayName() + " enforcement action has been "
@@ -840,8 +1109,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 				+ "greater force.";
 		if (!dropouts.isEmpty()) {
 			text += " The defeat has shaken the coalition: " + getPartnerNames(dropouts)
-					+ (dropouts.size() > 1 ? " wash their hands" : " washes its hands")
-					+ " of the dispute.";
+					+ (dropouts.size() > 1 ? " abandon" : " abandons")
+					+ " the coalition - their own grievances cool, though any quarrel of "
+					+ "their own may yet outlive the alliance.";
 		}
 		announce(text, Misc.getPositiveHighlightColor());
 	}
@@ -880,6 +1150,16 @@ public class GrievanceEventIntel extends BaseEventIntel {
 				addFactor(new CommodityGrievanceFactor(id));
 			}
 		}
+
+		// keep the coalition-partners block present and last, so the partner
+		// factor groups render beneath this faction's own factors
+		EventFactor coalition = getFactorOfClass(CoalitionFactorsFactor.class);
+		if (coalition == null) {
+			coalition = new CoalitionFactorsFactor();
+		} else {
+			removeFactor(coalition);
+		}
+		addFactor(coalition);
 	}
 
 	/** Called every manager tick; ends the grievance after sustained total calm. */
@@ -1029,14 +1309,13 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		// a finished strike must be resolved into consequences before
 		// anything new launches - otherwise a fast-refilling bar can
 		// clobber the outcome (truce, theft, vent) before the manager
-		// tick gets to it
+		// tick gets to it. Judged as a whole, like the manager does.
 		if (strike != null) {
-			if (strike.isSucceeded()) {
+			if (!allStrikeRaidsResolved()) return; // joint op still unfolding
+			if (anyStrikeRaidSucceeded()) {
 				onStrikeSucceeded();
-			} else if (strike.isAborted() || strike.isFailed()) {
-				onStrikeDefeated();
 			} else {
-				clearStrike();
+				onStrikeDefeated();
 			}
 			// consequences (truce, vent) govern what happens next; don't
 			// also launch a fresh strike in the same breath
@@ -1095,7 +1374,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		announce(Misc.ucFirst(getFaction().getDisplayNameWithArticle()) + " seethes at your "
 				+ actDesc + " on " + market.getName() + " - resentment surges.",
 				Misc.getNegativeHighlightColor());
-		setProgress(before + spike);
+		// through the event framework, not a bare setProgress: the spike lands
+		// AND shows in the "Recent one-time factors" panel with the reason
+		addFactor(new RetaliationFactor(spike,
+				"Your " + actDesc + " on " + market.getName()));
 	}
 
 	// ---- presentation ----
@@ -1136,15 +1418,45 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	}
 
 	/**
-	 * Keep the intel entry out of the list only when it is dormant - no
-	 * active causes, winding down toward expiry. A grievance frozen by a
-	 * vanilla colony crisis but still holding active causes stays visible
-	 * (frozen, showing the deferral row) rather than vanishing mid-watch;
-	 * once its causes lapse it becomes dormant and hides like any other.
+	 * This grievance is not currently pressing anything against the player -
+	 * it is on hold, for any of the reasons a grievance goes quiet. It is
+	 * hidden from the intel list so the list shows only disputes actually in
+	 * motion. A grievance is paused when it is:
+	 *   - merely backing another faction's coalition (that anchor's screen
+	 *     already speaks for the whole bloc, and settling there settles this);
+	 *   - too weak to press its demands, alone or pooled (the strength gate);
+	 *   - quieted because you serve the faction's flag (commission);
+	 *   - deferred to a vanilla colony crisis that speaks for it;
+	 *   - holding a post-strike truce (the announcement message tells the
+	 *     player the action ran its course; the entry returns when the truce
+	 *     lapses and resentment resumes);
+	 *   - committed to a coalition partner's active strike.
+	 * An active strike of its own, a coalition it is itself leading, or a
+	 * blood feud are never "paused" - those always show.
+	 */
+	public boolean isPaused() {
+		if (isVendetta()) return false;          // a blood feud never rests
+		if (isStrikeActive()) return false;      // its own strike is in progress
+		if (isCoalitionBacked()) return false;   // it leads its own coalition
+		if (!getBackedFactions().isEmpty()) return true;  // only backing another
+		if (supportingStrikeFor != null) return true;     // in a partner's strike
+		if (!emboldened) return true;            // too weak to press (the gate)
+		if (isCommissionSuppressed()) return true;   // you serve their flag
+		if (isDeferredToVanillaCrisis()) return true;// a vanilla crisis speaks for it
+		if (isInTruce()) return true;            // holding fire after a strike
+		return false;
+	}
+
+	/**
+	 * Keep the intel entry out of the list when it is dormant (no active
+	 * causes, winding down toward expiry) or paused for any reason (backing
+	 * another's coalition, too weak to press, suppressed by a commission,
+	 * deferred to a vanilla crisis, in truce). Only grievances actively in
+	 * motion against the player stay on the list.
 	 */
 	@Override
 	public boolean isHidden() {
-		return super.isHidden() || isDormant();
+		return super.isHidden() || isDormant() || isPaused();
 	}
 
 	@Override
@@ -1184,18 +1496,21 @@ public class GrievanceEventIntel extends BaseEventIntel {
 
 		info.addPara("Faction: %s", initPad, tc, faction.getBaseUIColor(), faction.getDisplayName());
 
+		// the full coalition roster, right after the aggrieved faction: every
+		// faction pressing this dispute, each named in its own faction colour
+		if (isCoalitionBacked()) {
+			addFactionListPara(info, "In coalition with", coalitionPartners, 0f);
+		}
+		List<String> backed = getBackedFactions();
+		if (!backed.isEmpty()) {
+			addFactionListPara(info, "Backing the grievances of", backed, 0f);
+		}
+
 		if (!causes.isEmpty()) {
 			info.addPara("Contested exports: %s", 0f, tc, h, getContestedCommodityNames());
 		}
 		if (militaryCause != null) {
 			info.addPara("Contested: %s", 0f, tc, h, "military buildup");
-		}
-		if (isCoalitionBacked()) {
-			info.addPara("In coalition with: %s", 0f, tc, h, getPartnerNames(coalitionPartners));
-		}
-		List<String> backed = getBackedFactions();
-		if (!backed.isEmpty()) {
-			info.addPara("Backing the grievances of: %s", 0f, tc, h, getPartnerNames(backed));
 		}
 		if (isInTruce()) {
 			info.addPara("Truce: %s days remain", 0f, tc, h, "" + (int) getTruceDaysLeft());
@@ -1349,10 +1664,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 						+ (plural ? "them" : "it") + ".", opad);
 			}
 			if (isCoalitionBacked()) {
-				info.addPara("Too weak to press this alone, they act in coalition with %s. The "
-						+ "pooled strength is what makes the ultimatum credible - break the "
-						+ "coalition, and the demands may die with it.", opad, h,
-						getPartnerNames(coalitionPartners));
+				addColoredFactionPara(info, "Too weak to press this alone, they act in coalition "
+						+ "with " + getPartnerNames(coalitionPartners) + ". The pooled strength is "
+						+ "what makes the ultimatum credible - break the coalition, and the demands "
+						+ "may die with it.", opad);
 			} else if (!emboldened) {
 				info.addPara("They lack the strength to press this any further - even counting "
 						+ "every ally they could rally. The grievance simmers, held below the "
@@ -1372,12 +1687,20 @@ public class GrievanceEventIntel extends BaseEventIntel {
 			} else {
 				objective = "raid your stockpiles and disrupt the offending industries";
 			}
-			info.addPara("Words have run out. " + factionNameUc + " " + isOrAre + " sending "
-					+ "enforcement fleets to " + objective + "."
+			addColoredFactionPara(info, "Words have run out. " + factionNameUc + " " + isOrAre
+					+ " sending enforcement fleets to " + objective + "."
 					+ (strikePartners != null && !strikePartners.isEmpty()
 						? " Coalition contingents from " + getPartnerNames(strikePartners)
 								+ " sail with them."
 						: ""), opad);
+			// raids adapt on the ground; warn when their orders extend to shells
+			if (!vendetta && strikeHeistIndustryId == null
+					&& escalation >= CommWarsConfig.tacBombEscalation()) {
+				info.addPara("Their commanders hold bombardment authority: should they find "
+						+ "the offending industries already silent, the shells fall instead.",
+						opad, Misc.getNegativeHighlightColor(),
+						Misc.getHighlightColor(), "bombardment authority");
+			}
 			// ground assessment, in this properly-wrapped column (only shows
 			// once the raiders are close enough to measure)
 			if (isStrikeActive()) addGroundAssessment(info);
@@ -1385,28 +1708,43 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	}
 
 	@Override
-	public void afterStageDescriptions(TooltipMakerAPI info) {
-		if (isCoalitionBacked() && getDisplayStage() != Stage.ULTIMATUM) {
-			info.addPara(Misc.ucFirst(getFaction().getDisplayNameWithArticle())
-					+ " lacks the strength to press this alone, and does so in coalition "
-					+ "with %s - their pooled might is what makes the demands credible.", 10f,
-					Misc.getNegativeHighlightColor(), Misc.getHighlightColor(),
-					getPartnerNames(coalitionPartners));
-		}
+	public void afterStageDescriptions(TooltipMakerAPI main) {
+		// Everything the base class lets us add here spans the full intel panel,
+		// which is wider than the bar/description column above it - so this text
+		// ran clear across the page. Add it inside a sub-tooltip constrained to
+		// the same column width, so it wraps in line with the rest.
+		float w = getBarWidth();
+
+		boolean coalitionText = isCoalitionBacked() && getDisplayStage() != Stage.ULTIMATUM;
 		List<String> backedByThis = getBackedFactions();
-		if (!backedByThis.isEmpty()) {
-			info.addPara(Misc.ucFirst(getFaction().getDisplayNameWithArticle())
-					+ " is also lending its strength to the grievances of %s - without its "
-					+ "backing, their demands would collapse.", 10f,
-					Misc.getNegativeHighlightColor(), Misc.getHighlightColor(),
-					getPartnerNames(backedByThis));
+		boolean enforcementText = !canRespond() && isUltimatumReached() && isStrikeActive();
+
+		if (coalitionText || !backedByThis.isEmpty() || enforcementText) {
+			TooltipMakerAPI col = main.beginSubTooltip(w);
+			if (coalitionText) {
+				addColoredFactionPara(col, Misc.ucFirst(getFaction().getDisplayNameWithArticle())
+						+ " lacks the strength to press this alone, and does so in coalition with "
+						+ getPartnerNames(coalitionPartners) + " - their pooled might is what makes "
+						+ "the demands credible.", 10f);
+			}
+			if (!backedByThis.isEmpty()) {
+				addColoredFactionPara(col, Misc.ucFirst(getFaction().getDisplayNameWithArticle())
+						+ " is also lending its strength to the grievances of "
+						+ getPartnerNames(backedByThis) + " - without its backing, their demands "
+						+ "would collapse.", 10f);
+			}
+			if (enforcementText) {
+				col.addPara("Enforcement fleets are underway - the time for negotiation has passed.",
+						Misc.getNegativeHighlightColor(), 10f);
+			}
+			main.endSubTooltip();
+			main.addCustom(col, 10f);
 		}
+
+		// the button stays on the full panel so its click routing is unaffected
 		if (canRespond()) {
-			info.addSpacer(10f);
-			info.addButton("Respond to the ultimatum", BUTTON_ORDERS, 220f, 20f, 10f);
-		} else if (isUltimatumReached() && isStrikeActive()) {
-			info.addPara("Enforcement fleets are underway - the time for negotiation has passed.",
-					Misc.getNegativeHighlightColor(), 10f);
+			main.addSpacer(10f);
+			main.addButton("Respond to the ultimatum", BUTTON_ORDERS, 220f, 20f, 10f);
 		}
 
 		if (!CommWarsConfig.debugMode()) return;
@@ -1414,6 +1752,8 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		float opad = 10f;
 		Color h = Misc.getHighlightColor();
 		Color n = Misc.getNegativeHighlightColor();
+
+		TooltipMakerAPI info = main.beginSubTooltip(w);
 
 		info.addSectionHeading("Debug", n, Misc.getDarkPlayerColor(), Alignment.MID, opad * 2f);
 
@@ -1518,6 +1858,9 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		if (lastStrikeMath != null) {
 			info.addPara("last strike: %s", 3f, h, lastStrikeMath);
 		}
+
+		main.endSubTooltip();
+		main.addCustom(info, opad);
 	}
 
 	@Override

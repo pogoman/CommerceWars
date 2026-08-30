@@ -3,6 +3,7 @@ package commwars;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
@@ -35,6 +36,13 @@ import com.fs.starfarer.api.util.Misc;
  */
 public class EnforcementStrike {
 
+	/**
+	 * Rough war-fleet pace for convergence timing: ~burn 8, half a light-year
+	 * per day per burn point. Only used to stagger departures so coalition
+	 * contingents arrive together - precision doesn't matter, spread does.
+	 */
+	public static final float LY_PER_DAY = 4f;
+
 	/** Player market producing the most of the contested commodities. */
 	public static MarketAPI findTarget(List<String> contested) {
 		MarketAPI best = null;
@@ -59,10 +67,35 @@ public class EnforcementStrike {
 		return best;
 	}
 
+	/** Total production of the given commodities at a market (0 = makes none of them). */
+	public static float contestedProduction(MarketAPI market, List<String> contested) {
+		float score = 0f;
+		for (Industry ind : market.getIndustries()) {
+			for (MutableCommodityQuantity q : ind.getAllSupply()) {
+				if (contested.contains(q.getCommodityId())) {
+					score += q.getQuantity().getModifiedValue();
+				}
+			}
+		}
+		return score;
+	}
+
+	/**
+	 * An industry a raid can meaningfully disrupt: vanilla raid duration is
+	 * marine tokens x the industry's disrupt-danger days, so a zero-danger
+	 * industry (Population & Infrastructure above all) clamps to a 2-day blip
+	 * - a wasted raid action that reads as "nothing happened" to the player.
+	 */
+	protected static boolean meaningfullyDisruptable(Industry ind) {
+		return ind.getSpec() != null && ind.getSpec().getDisruptDanger() != null
+				&& ind.getSpec().getDisruptDanger().disruptionDays > 0;
+	}
+
 	/** Industries on the target that supply any contested commodity. */
 	public static List<String> findOffendingIndustries(MarketAPI target, List<String> contested) {
 		Set<String> result = new LinkedHashSet<String>();
 		for (Industry ind : target.getIndustries()) {
+			if (!meaningfullyDisruptable(ind)) continue;
 			for (MutableCommodityQuantity q : ind.getAllSupply()) {
 				if (contested.contains(q.getCommodityId())
 						&& q.getQuantity().getModifiedValue() > 0) {
@@ -93,6 +126,7 @@ public class EnforcementStrike {
 	public static List<String> findMilitaryIndustries(MarketAPI target) {
 		List<String> result = new ArrayList<String>();
 		for (Industry ind : target.getIndustries()) {
+			if (!meaningfullyDisruptable(ind)) continue;
 			if (MilitaryScore.industryWeight(ind.getId()) > 0) {
 				result.add(ind.getId());
 			}
@@ -117,7 +151,8 @@ public class EnforcementStrike {
 	 * included - so the player can judge whether to reinforce before arrival.
 	 */
 	public static void appendGroundAssessment(TooltipMakerAPI info,
-			List<CampaignFleetAPI> fleets, MarketAPI target, boolean isHeist, float opad) {
+			List<CampaignFleetAPI> fleets, MarketAPI target, boolean isHeist,
+			float projectedRaidStr, float opad) {
 		if (target == null) return;
 		Color h = Misc.getHighlightColor();
 		Color good = Misc.getPositiveHighlightColor();
@@ -125,22 +160,26 @@ public class EnforcementStrike {
 
 		float defenderStr = MarketCMD.getDefenderStr(target);
 
+		// prefer the live, measured ground strength once their fleets are close
+		// enough to scout; until then (staging and most of the approach) their
+		// fleets are not spawned, so fall back to the force they committed at
+		// launch - the marines are loaded when they leave, ~50 days before they
+		// arrive, so this is what is actually inbound.
 		float raidStr = 0f;
 		if (fleets != null) {
 			for (CampaignFleetAPI fleet : fleets) raidStr += MarketCMD.getRaidStr(fleet);
 		}
-
-		// their ground strength cannot be assessed until their fleets are
-		// close enough to scout (they are not spawned during the fleet's
-		// staging). Show nothing rather than an empty half-assessment.
-		if (raidStr <= 0f) return;
+		boolean measured = raidStr > 0f;
+		if (!measured) raidStr = projectedRaidStr;
+		if (raidStr <= 0f) return; // no committed force known yet either
 
 		float margin = isHeist
 				? CommWarsConfig.heistBreakMargin() : CommWarsConfig.groundBreakMargin();
 		boolean willBreak = raidStr >= defenderStr * margin;
 		float ratio = defenderStr > 0 ? raidStr / defenderStr : 99f;
 
-		info.addPara("Ground assessment: their raid strength %s against " + target.getName()
+		info.addPara("Ground assessment: their " + (measured ? "raid" : "projected raid")
+				+ " strength %s against " + target.getName()
 				+ "'s defender strength %s (planetary shield and garrison marines included) - "
 				+ "a %s-to-1 ground ratio.", opad, h,
 				Misc.getWithDGS((int) raidStr), Misc.getWithDGS((int) defenderStr),
@@ -159,6 +198,12 @@ public class EnforcementStrike {
 							+ "lands."
 					: "Your ground defenses should repel this - they cannot break through.",
 					3f, willBreak ? bad : good, willBreak ? "" : "should repel this");
+		}
+
+		if (!measured) {
+			info.addPara("This is the force they committed at departure, weighed against your "
+					+ "defenses as they stand now. Raise your ground defenses before they arrive "
+					+ "to shift the outcome.", 3f, Misc.getGrayColor());
 		}
 	}
 
@@ -212,7 +257,19 @@ public class EnforcementStrike {
 
 	/**
 	 * Launches the strike and registers it on the intel. Returns false if no
-	 * valid source or target exists (e.g. the player has no colonies).
+	 * valid target exists, or no member can stage a raid (e.g. the player has
+	 * no colonies).
+	 *
+	 * A coalition strikes as SEVERAL simultaneous raids - one per member, each
+	 * under its own flag, each its own intel marker - so a joint enforcement
+	 * plainly reads as one: Tri-Tachyon, Hegemony, and independent fleets
+	 * converging on the target alongside the anchor. The total strength budget
+	 * is split across them, so it is the same force as a single pooled raid,
+	 * just flown under the colors of everyone actually pressing the grievance.
+	 * The anchor's own raid is the one the grievance tracks for consequences
+	 * (ground assault, disruption, truce, escalation); the partners' raids do
+	 * their own vanilla damage and withdraw. A heist or a blood feud is one
+	 * faction's operation and never splits.
 	 */
 	public static boolean launch(GrievanceEventIntel intel) {
 		List<String> contested = intel.getCauseCommodityIds();
@@ -229,65 +286,18 @@ public class EnforcementStrike {
 		MarketAPI target = heist != null ? heist.market
 				: vendetta ? findTarget(new ArrayList<String>()) // largest player colony
 				: militaryMode ? findMilitaryTarget() : findTarget(contested);
-		MarketAPI source = findSource(intel.getFaction());
-		if (target == null || source == null) {
+		if (target == null) {
 			CommWarsConfig.log("Enforcement strike by " + intel.getFactionId()
-					+ " aborted: no valid " + (target == null ? "target" : "source"));
+					+ " aborted: no valid target");
 			return false;
 		}
 
-		Random random = new Random();
-		GenericRaidParams params = new GenericRaidParams(new Random(random.nextLong()), true);
-
-		params.factionId = intel.getFactionId();
-		params.source = source;
-		params.prepDays = 14f + 7f * random.nextFloat();
-		// short payload window: the FGI only counts as succeeded once this
-		// window closes, and theft/truce consequences fire then - keep the
-		// gap between the visible raid and its consequences tight
-		params.payloadDays = 21f + 9f * random.nextFloat();
-		params.makeFleetsHostile = true;
-
-		params.raidParams.where = target.getStarSystem();
-		params.raidParams.type = FGRaidType.CONCURRENT;
-		params.raidParams.tryToCaptureObjectives = false;
-		params.raidParams.allowedTargets.add(target);
-		params.raidParams.allowNonHostileTargets = true;
-		params.raidParams.doNotGetSidetracked = true;
-
-		boolean tacBomb = heist == null && !vendetta
+		// bombardment authority for the adaptive contingents; the heist raid
+		// itself never bombs (a scripted ground op to lift the asset intact)
+		boolean tacBomb = !vendetta
 				&& intel.getEscalation() >= CommWarsConfig.tacBombEscalation();
-		if (vendetta) {
-			// the blood feud answers saturation with saturation
-			params.raidParams.setBombardment(BombardType.SATURATION);
-		} else if (heist != null) {
-			// a ground operation: breach the fortifications, take the item
-			List<String> disrupt = new ArrayList<String>();
-			if (target.getIndustry(Industries.GROUNDDEFENSES) != null) {
-				disrupt.add(Industries.GROUNDDEFENSES);
-			}
-			if (target.getIndustry(Industries.HEAVYBATTERIES) != null) {
-				disrupt.add(Industries.HEAVYBATTERIES);
-			}
-			disrupt.add(heist.industryId);
-			params.raidParams.setDisrupt(disrupt.toArray(new String[0]));
-		} else if (tacBomb) {
-			params.raidParams.setBombardment(BombardType.TACTICAL);
-		} else {
-			List<String> industries = militaryMode
-					? findMilitaryIndustries(target)
-					: findOffendingIndustries(target, contested);
-			if (!industries.isEmpty()) {
-				params.raidParams.setDisrupt(industries.toArray(new String[0]));
-			}
-		}
 
-		params.noun = vendetta ? "retribution" : "enforcement action";
-		params.forcesNoun = vendetta ? "retribution forces" : "enforcement forces";
-		params.style = FleetStyle.STANDARD;
-		params.repImpact = ComplicationRepImpact.NONE;
-
-		// --- grounded fleet scaling ---
+		// --- grounded strength budget ---
 		// enough to ensure victory over the target's actual defenses...
 		FactionAPI player = Global.getSector().getPlayerFaction();
 		float targetStr = WarSimScript.getFactionStrength(player, target.getStarSystem())
@@ -328,45 +338,277 @@ public class EnforcementStrike {
 				+ " | final " + (int) difficulty);
 		CommWarsConfig.log("Strike scaling: " + intel.getLastStrikeMath());
 
-		difficulty -= 10;
-		params.fleetSizes.add(10);
-		while (difficulty > 0) {
-			int size = 6 + random.nextInt(5);
-			params.fleetSizes.add(size);
-			difficulty -= size;
+		// a coalition splits into one raid per member. A heist is still a joint
+		// operation: the ANCHOR storms the vault with an oversized contingent
+		// while the partners open their own fronts - diversion and smash-and-
+		// grab. Only a vendetta is one faction's business alone.
+		boolean coalition = !vendetta && !intel.getCoalitionPartners().isEmpty();
+		List<String> members = new ArrayList<String>();
+		members.add(intel.getFactionId());
+		if (coalition) members.addAll(intel.getCoalitionPartners());
+
+		Random random = new Random();
+		// weighted split of the total: the vault-storming anchor of a heist
+		// gets heistForceMult shares, everyone else one share each - solo
+		// strikes collapse to the full budget either way
+		float anchorWeight = heist != null ? CommWarsConfig.heistForceMult() : 1f;
+		float totalWeight = anchorWeight + (members.size() - 1);
+		float share = difficulty / totalWeight;
+		float anchorBudget = share * anchorWeight;
+
+		// --- per-member targets: each contingent chases ITS OWN grievance ---
+		// The colony producing the most of the member's contested goods is its
+		// mark - if the player's production is spread out, the coalition fans
+		// out across colonies and cannot be met everywhere at once; if one
+		// colony really is the hub, they converge on it. A member with no real
+		// producer of its own goods (score 0) sails with the anchor instead -
+		// no battle groups solemnly raiding a size-3 backwater.
+		Map<String, MarketAPI> targets = new java.util.LinkedHashMap<String, MarketAPI>();
+		for (String memberId : members) {
+			MarketAPI memberTarget = target; // the anchor's colony by default
+			if (coalition && !memberId.equals(intel.getFactionId())) {
+				GrievanceEventIntel memberIntel = GrievanceEventIntel.get(memberId);
+				if (memberIntel != null) {
+					if (memberIntel.isMilitaryDominant()) {
+						MarketAPI own = findMilitaryTarget();
+						if (own != null && MilitaryScore.marketScore(own) > 0) {
+							memberTarget = own;
+						}
+					} else {
+						List<String> ownContested = memberIntel.getCauseCommodityIds();
+						MarketAPI own = findTarget(ownContested);
+						if (own != null && contestedProduction(own, ownContested) > 0) {
+							memberTarget = own;
+						}
+					}
+				}
+			}
+			targets.put(memberId, memberTarget);
 		}
 
-		GenericRaidFGI raid;
-		if (!intel.getCoalitionPartners().isEmpty()) {
-			List<String> members = new ArrayList<String>();
-			members.add(intel.getFactionId());
-			members.addAll(intel.getCoalitionPartners());
-			raid = new CoalitionRaidFGI(params, members, heist != null);
-		} else {
-			raid = new EnforcementRaidFGI(params, heist != null);
+		// --- synchronized convergence ---
+		// A coalition that trickles in over weeks is defeated in detail by a
+		// player fighting one contingent at a time. Estimate each member's
+		// travel time from its staging market to ITS target and pad the
+		// NEARER members' prep so every front opens within days of the others.
+		Map<String, MarketAPI> sources = new java.util.LinkedHashMap<String, MarketAPI>();
+		Map<String, Float> travelDays = new java.util.LinkedHashMap<String, Float>();
+		float maxTravelDays = 0f;
+		for (String memberId : members) {
+			FactionAPI memberFaction = Global.getSector().getFaction(memberId);
+			if (memberFaction == null) continue;
+			MarketAPI source = findSource(memberFaction);
+			if (source == null) continue;
+			sources.put(memberId, source);
+			float dist = Misc.getDistanceLY(source.getPrimaryEntity(),
+					targets.get(memberId).getPrimaryEntity());
+			float days = dist / LY_PER_DAY;
+			travelDays.put(memberId, days);
+			if (days > maxTravelDays) maxTravelDays = days;
 		}
-		Global.getSector().getIntelManager().addIntel(raid);
+		float basePrep = 14f + 7f * random.nextFloat();
+		// a PLANNING window before any fleet musters, same length for every
+		// contingent (arrivals stay synchronized): vanilla's sabotage
+		// counterplay lives here - disrupt the staging market's military base
+		// or high command (bombardment, raid) while the operation is in the
+		// planning stages, and that contingent's strike is aborted outright
+		float planningDays = 10f + 5f * random.nextFloat();
 
-		intel.setStrike(raid, target, source, tacBomb || vendetta,
-				militaryMode || vendetta, heist != null ? heist.industryId : null);
+		GenericRaidFGI anchorRaid = null;
+		MarketAPI anchorSource = null;
+		List<GenericRaidFGI> partnerRaids = new ArrayList<GenericRaidFGI>();
+		int launched = 0;
 
-		// the joint action speaks for the whole coalition: every member's
-		// ledger vents into it - reset and held until the strike resolves
-		for (String partnerId : intel.getCoalitionPartners()) {
-			GrievanceEventIntel partner = GrievanceEventIntel.get(partnerId);
-			if (partner != null) {
-				partner.joinCoalitionStrike(intel.getFactionId());
+		for (String memberId : members) {
+			MarketAPI source = sources.get(memberId);
+			if (source == null) {
+				CommWarsConfig.log("  " + memberId + " cannot join the strike: no staging market");
+				continue;
+			}
+
+			boolean isAnchor = memberId.equals(intel.getFactionId());
+			MarketAPI memberTarget = targets.get(memberId);
+			// the heist ground op belongs to the anchor alone; partner
+			// contingents fly ordinary adaptive enforcement raids alongside
+			HeistPlan memberHeist = isAnchor ? heist : null;
+
+			// each contingent goes after the industries behind ITS OWN grievance
+			// at ITS OWN target: the ore-aggrieved faction hits the mining hub,
+			// the fuel-aggrieved one the fuel works - falling back to the
+			// anchor's list if its target makes nothing this member contests
+			GrievanceEventIntel memberIntel = isAnchor ? intel
+					: GrievanceEventIntel.get(memberId);
+			List<String> disruptIndustries = memberDisruptIndustries(
+					memberIntel, memberTarget, contested, militaryMode);
+
+			GenericRaidParams params = buildRaidParams(memberId, source, memberTarget,
+					disruptIndustries, vendetta, memberHeist, random);
+			// nearer contingents wait in port so every front opens together
+			params.prepDays = basePrep + (maxTravelDays - travelDays.get(memberId));
+			float projectedRaidStr = buildFleetSizes(params,
+					isAnchor ? anchorBudget : share, random);
+
+			// tacBomb no longer locks the payload: it AUTHORIZES bombardment as
+			// the fallback when a contingent finds its industries already silent
+			// (never for the heist raid itself - it wants the asset intact)
+			GenericRaidFGI raid = new EnforcementRaidFGI(params, memberHeist != null,
+					projectedRaidStr, tacBomb && memberHeist == null);
+			// open the vanilla planning window: while it lasts, knocking out
+			// the staging market's military base/high command aborts this
+			// contingent (the intel status shows the hint, as for expeditions)
+			raid.setPreFleetDeploymentDelay(planningDays);
+			// the anchor's raid pings as usual; partner contingents are added
+			// silently (the grievance already announces the joint action) so a
+			// coalition launch doesn't spam a notification per faction
+			Global.getSector().getIntelManager().addIntel(raid, !isAnchor);
+			launched++;
+			CommWarsConfig.log("  raid: " + memberId + " vs " + memberTarget.getName()
+					+ " (budget " + (int) (isAnchor ? anchorBudget : share)
+					+ (memberHeist != null ? " HEIST" : "")
+					+ ", " + params.fleetSizes.size() + " fleets"
+					+ ", planning " + (int) planningDays + "d (sabotage window) + prep "
+					+ (int) params.prepDays + "d + travel ~"
+					+ (int) travelDays.get(memberId).floatValue() + "d"
+					+ (disruptIndustries.isEmpty() ? "" : ", hits " + disruptIndustries) + ")");
+
+			if (isAnchor) {
+				anchorRaid = raid;
+				anchorSource = source;
+			} else {
+				partnerRaids.add(raid);
+				// the joint action speaks for this partner's grievance too: its
+				// ledger vents into the strike - reset and held until resolution
+				GrievanceEventIntel partner = GrievanceEventIntel.get(memberId);
+				if (partner != null) partner.joinCoalitionStrike(intel.getFactionId());
 			}
 		}
 
+		if (anchorRaid == null) {
+			CommWarsConfig.log("Enforcement strike by " + intel.getFactionId()
+					+ " aborted: no staging market for the leading faction");
+			return false;
+		}
+
+		// the grievance tracks the anchor's own raid for consequences; the
+		// partners' contingents run alongside it and count toward the combined
+		// ground assault (setStrike resets the support list, so register after).
+		// Only a vendetta is a committed bombardment now - enforcement strikes
+		// decide at the raid whether shells are actually needed.
+		intel.setStrike(anchorRaid, target, anchorSource, vendetta,
+				militaryMode || vendetta, heist != null ? heist.industryId : null);
+		for (GenericRaidFGI partnerRaid : partnerRaids) {
+			intel.addSupportRaid(partnerRaid);
+		}
+
 		CommWarsConfig.log("Enforcement strike launched: " + intel.getFactionId()
+				+ (coalition ? " with coalition (" + launched + " raids)" : "")
 				+ " vs " + target.getName() + " (escalation " + intel.getEscalation()
 				+ ", " + (vendetta ? "VENDETTA, " : militaryMode ? "MILITARY track, " : "trade track, ")
 				+ (vendetta ? "SATURATION BOMBARDMENT"
 					: heist != null
 					? "ITEM HEIST attempt vs " + heist.industryId
 							+ " (needs overwhelming ground advantage)"
-					: tacBomb ? "TACTICAL BOMBARDMENT" : "disruption raid") + ")");
+					: tacBomb ? "adaptive raid, bombardment authorized"
+					: "adaptive disruption raid") + ")");
 		return true;
+	}
+
+	/**
+	 * The industries this coalition member goes after: the ones on the target
+	 * producing ITS OWN contested commodities (or, if it is a military-track
+	 * grievance, the target's military industries). Falls back to the leading
+	 * faction's contested industries when the target makes nothing this member
+	 * itself contests, so the contingent still strikes something relevant.
+	 */
+	public static List<String> memberDisruptIndustries(GrievanceEventIntel memberIntel,
+			MarketAPI target, List<String> anchorContested, boolean anchorMilitary) {
+		boolean military = memberIntel != null ? memberIntel.isMilitaryDominant() : anchorMilitary;
+		if (military) {
+			return findMilitaryIndustries(target);
+		}
+		List<String> contested = memberIntel != null
+				? memberIntel.getCauseCommodityIds() : anchorContested;
+		List<String> industries = findOffendingIndustries(target, contested);
+		if (industries.isEmpty() && contested != anchorContested) {
+			industries = findOffendingIndustries(target, anchorContested);
+		}
+		return industries;
+	}
+
+	/**
+	 * Build the raid parameters for one faction's contingent: staging market,
+	 * timing, target, and payload, all under that faction's own flag. Only a
+	 * vendetta (saturation) or a heist locks its payload in here; a plain
+	 * enforcement raid carries its industry hit-list and decides in real time,
+	 * fleet by fleet, whether to disrupt, bombard, or raid generically
+	 * (see {@link EnforcementRaidFGI#doCustomRaidAction}).
+	 */
+	private static GenericRaidParams buildRaidParams(String factionId, MarketAPI source,
+			MarketAPI target, List<String> disruptIndustries, boolean vendetta,
+			HeistPlan heist, Random random) {
+		GenericRaidParams params = new GenericRaidParams(new Random(random.nextLong()), true);
+
+		params.factionId = factionId;
+		params.source = source;
+		params.prepDays = 14f + 7f * random.nextFloat();
+		// short payload window: the FGI only counts as succeeded once this
+		// window closes, and theft/truce consequences fire then - keep the
+		// gap between the visible raid and its consequences tight
+		params.payloadDays = 21f + 9f * random.nextFloat();
+		params.makeFleetsHostile = true;
+
+		params.raidParams.where = target.getStarSystem();
+		params.raidParams.type = FGRaidType.CONCURRENT;
+		params.raidParams.tryToCaptureObjectives = false;
+		params.raidParams.allowedTargets.add(target);
+		params.raidParams.allowNonHostileTargets = true;
+		params.raidParams.doNotGetSidetracked = true;
+
+		if (vendetta) {
+			// the blood feud answers saturation with saturation
+			params.raidParams.setBombardment(BombardType.SATURATION);
+		} else if (heist != null) {
+			// a ground operation: breach the fortifications, take the item
+			List<String> disrupt = new ArrayList<String>();
+			if (target.getIndustry(Industries.GROUNDDEFENSES) != null) {
+				disrupt.add(Industries.GROUNDDEFENSES);
+			}
+			if (target.getIndustry(Industries.HEAVYBATTERIES) != null) {
+				disrupt.add(Industries.HEAVYBATTERIES);
+			}
+			disrupt.add(heist.industryId);
+			params.raidParams.setDisrupt(disrupt.toArray(new String[0]));
+		} else {
+			// no locked-in bombardment: carry the hit-list, adapt at raid time
+			if (disruptIndustries != null && !disruptIndustries.isEmpty()) {
+				params.raidParams.setDisrupt(disruptIndustries.toArray(new String[0]));
+			}
+		}
+
+		params.noun = vendetta ? "retribution" : "enforcement action";
+		params.forcesNoun = vendetta ? "retribution forces" : "enforcement forces";
+		params.style = FleetStyle.STANDARD;
+		params.repImpact = ComplicationRepImpact.NONE;
+		return params;
+	}
+
+	/**
+	 * Spend a strength budget on a few substantial fleets rather than a swarm
+	 * of tiny ones (same total strength, a believable handful of fleets, and -
+	 * for a coalition member's share - enough size that each faction's raid is
+	 * a real force). Returns the projected ground raid strength of the whole
+	 * contingent, for the pre-arrival assessment.
+	 */
+	private static float buildFleetSizes(GenericRaidParams params, float budget, Random random) {
+		params.fleetSizes.add(16);
+		budget -= 16;
+		while (budget > 0) {
+			int size = 14 + random.nextInt(9); // 14-22 fleet points each
+			params.fleetSizes.add(size);
+			budget -= size;
+		}
+		int committedPoints = 0;
+		for (int s : params.fleetSizes) committedPoints += s;
+		return committedPoints * CommWarsConfig.groundStrPerFleetPoint();
 	}
 }

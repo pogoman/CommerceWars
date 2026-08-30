@@ -30,16 +30,22 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 
 	protected String disruptSummary;  // industries disrupted (broke through)
 	protected int disruptDays;
-	protected boolean bombarded;
+	protected boolean bombarded;      // a bombardment landed - not gated on the ground break
+	protected boolean saturation;
 	protected String heistItemName;
 
 	public StrikeSummaryIntel(String factionId, String targetName) {
 		this.factionId = factionId;
 		this.targetName = targetName;
-		Global.getSector().getIntelManager().addIntel(this, false);
+		// NOT added to the intel manager here: the feed message renders the
+		// name at add-time, and the outcome fields are only set after
+		// construction - adding now titles it "Enforcement Repelled" (the
+		// default state) even for a strike that broke through. finish() adds
+		// it once the report is complete.
 	}
 
 	public void finish() {
+		Global.getSector().getIntelManager().addIntel(this, false);
 		endAfterDelay(CommWarsConfig.strikeSummaryDays());
 	}
 
@@ -59,8 +65,25 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 		this.disruptDays = days;
 	}
 
-	public void setBombarded(boolean b) { this.bombarded = b; }
+	public void setBombarded(boolean b, boolean saturation) {
+		this.bombarded = b;
+		this.saturation = saturation;
+	}
 	public void setHeist(String itemName) { this.heistItemName = itemName; }
+
+	protected java.util.List<String> operations;
+
+	public void setOperations(java.util.List<String> operations) {
+		this.operations = operations;
+	}
+
+	protected boolean anyOperation(String marker) {
+		if (operations == null) return false;
+		for (String op : operations) {
+			if (op.contains(marker)) return true;
+		}
+		return false;
+	}
 
 	@Override
 	protected float getBaseDaysAfterEnd() {
@@ -69,7 +92,9 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 
 	@Override
 	public String getName() {
-		String kind = broke ? "Enforcement Damage" : "Enforcement Repelled";
+		// a bombardment lands whether or not the ground assault broke through,
+		// so a repelled-but-bombarded strike still did damage
+		String kind = (broke || bombarded) ? "Enforcement Damage" : "Enforcement Repelled";
 		return kind + " - " + getFaction().getDisplayName()
 				+ (targetName != null ? " vs " + targetName : "");
 	}
@@ -111,6 +136,11 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 					+ (ratio >= 2f ? "light - they came in overwhelming force."
 						: "heavy - they barely carried the assault."), 3f,
 					ratio >= 2f ? h : good, ratio >= 2f ? "light" : "heavy");
+			if (anyOperation("repelled")) {
+				info.addPara("The breakthrough was not clean: fleets landed piecemeal, and "
+						+ "individual landings were thrown back before the defenses buckled.",
+						3f, good, "thrown back");
+			}
 
 			info.setBulletedListMode(BaseIntelPlugin.INDENT);
 			if (disruptSummary != null) {
@@ -120,20 +150,53 @@ public class StrikeSummaryIntel extends BaseIntelPlugin {
 						+ "falls until they recover", 3f);
 			}
 			if (bombarded) {
-				info.addPara("Tactical bombardment - military infrastructure disrupted, "
-						+ "stability hit", 8f, bad, "");
+				info.addPara(saturation
+						? "Saturation bombardment - catastrophic damage to the colony"
+						: "Tactical bombardment - military infrastructure disrupted, "
+							+ "stability hit", 8f, bad, "");
 			}
 			if (heistItemName != null) {
 				info.addPara("Strategic asset seized: " + heistItemName
 						+ " - carried off, and recoverable by raiding them back", 8f, bad, "");
 			}
 			info.setBulletedListMode(null);
+		} else if (bombarded) {
+			// ground defenses gate the landing, not the shells: the bombardment
+			// landed even though the assault was repelled
+			info.addPara("Your ground defenses held - the landing force was repelled, and "
+					+ "nothing was taken on the ground.", opad, good, "repelled");
+			info.addPara(saturation
+					? "But no ground defense stops the shells: their saturation bombardment "
+						+ "struck home, devastating the colony."
+					: "But no ground defense stops the shells: their tactical bombardment "
+						+ "struck home - military infrastructure disrupted, stability hit.",
+					3f, bad, saturation ? "saturation bombardment" : "tactical bombardment");
+			info.addPara("They withdraw, and their resentment - undented - will send them back "
+					+ "in greater force.", 3f);
+		} else if (anyOperation("disrupted")) {
+			// the massed assault failed, but individual landings still landed blows
+			info.addPara("Your ground defenses held against the main assault - but the raiders "
+					+ "came piecemeal, and some landings did real damage before withdrawing "
+					+ "(see the operations report below).", opad, good, "held");
+			info.addPara("They withdraw, and will return in greater force.", 3f);
 		} else {
 			info.addPara("Your ground defenses held - the assault was repelled. Nothing was "
 					+ "taken, nothing disrupted, and the attacking fleets took losses forcing "
 					+ "the failed landing.", opad, good, "repelled");
 			info.addPara("They withdraw, and their resentment - undented - will send them back "
 					+ "in greater force.", 3f);
+		}
+
+		// the fleet-by-fleet ground truth, so this report and the raid intel's
+		// operations log can never tell different stories
+		if (operations != null && !operations.isEmpty()) {
+			info.addSectionHeading("Operations report", faction.getBaseUIColor(),
+					faction.getDarkUIColor(), com.fs.starfarer.api.ui.Alignment.MID, opad);
+			for (String entry : operations) {
+				boolean hurt = entry.contains("bombardment") || entry.contains("disrupted")
+						|| entry.contains("stockpiles");
+				info.addPara(BULLET + entry, hurt ? bad : good, 3f);
+			}
 		}
 	}
 

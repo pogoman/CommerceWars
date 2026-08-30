@@ -1,78 +1,89 @@
 # Commerce Wars
 
 Success paints a target. A standalone Starsector mod that keeps late-game player
-markets in check: factions whose export business you muscle in on develop
+polities in check: factions whose export business you muscle in on develop
 grievances that escalate from diplomatic notes to ultimatums to enforcement
-fleets. Comply, pay tribute, or defy them and fight. Sibling of Remnant
-Retribution and Threat Incursion (vanilla API only, LunaLib optional).
+fleets. Comply, pay them off, or defy them and fight. Military buildup draws
+the same attention. Grow strong enough and no single faction dares press a
+demand alone... so they form coalitions. Vanilla API only; LunaLib optional
+(full in-game config menu).
 
-## Core loop
+## The loop
 
 1. **Grievance detection** (generic, faction-independent): every tick the mod
    recomputes sector export market shares. A faction develops a grievance over
-   a commodity when it is a significant producer (top-N, minimum share), your
-   share is big enough to notice, and your share rivals theirs. The vanilla
-   economy recomputes shares dynamically, so *compliance detection is
-   automatic* - shut the industry down and the numbers themselves cool off.
-2. **Resentment** accrues monthly per contested commodity
-   (weightMult x yourShare/theirShare, capped), shown as a colony-crisis-style
-   event bar (0-600) with stages: warning (200), ultimatum (400),
-   enforcement (600).
-3. **Response options** (Phase 2): comply (drop your share below the notice
-   line - however you like), pay tribute (recurring cut of contested export
-   income, freezes resentment), or defy (fight the enforcement fleets).
-4. **Enforcement** (Phase 2/3): raids that steal stockpiles, tactical
-   bombardment that disrupts the offending industries, and at high escalation
-   a chance to *steal installed items* (synchrotron, nanoforge...) - stolen
-   items go somewhere real and can be raided back.
-5. **Military track** (Phase 4): same loop, but the metric is your military
-   infrastructure (High Command, Star Fortress, Orbital Works + nanoforge) and
-   the demand is a downgrade.
-6. **Strength gate + coalitions** (Phase 5): factions only press demands while
-   militarily on par or superior. Outgrow them and aggrieved factions must
-   pool their strength into joint ultimatums - mixed enforcement fleets,
-   tribute split among signatories, coalition resolve that cracks when you
-   defeat them. Outgrow *plausible coalitions* and the demands stop: earned
-   silence.
-7. **Counterplay ladder**: defeat fleets (vents some resentment, escalates the
-   next strike), tac-bomb their competing production back (delays), sat-bomb
-   -> decivilize -> recolonize the ruins (grievance mathematically evaporates
-   with the competitor - at vanilla atrocity prices).
+   a commodity when it is a significant producer, your share is big enough to
+   notice, and your share rivals theirs. The vanilla economy recomputes shares
+   dynamically, so *compliance detection is automatic* - lose the share (however
+   you like) and the numbers themselves cool off.
+2. **Resentment** accrues monthly per contested commodity, shown as a
+   colony-crisis-style event bar (0-600): diplomatic warning (200), formal
+   ultimatum (400), enforcement (600). One intel screen per aggrieved faction;
+   a coalition consolidates onto its leader's screen, partners' factors grouped
+   by faction.
+3. **Respond**: comply (drop your share below the notice line), pay one-off
+   settlements that buy down accumulated resentment (a coalition must be paid
+   as a bloc), take a commission to lay a military grievance to rest, or defy
+   and fight.
+4. **Enforcement**: strike fleets sized against your actual defenses but hard
+   capped by the faction's real military-industrial capacity - no magic fleets.
+   Disrupting their war industry genuinely shrinks what they can send.
 
-## Status
+## Enforcement strikes
 
-- [x] Total War (config, off by default): strips story-critical protection
-  from all markets each tick - any world can be bombed down and destroyed,
-  factions can be entirely eliminated (announced). Questlines anchored on
-  destroyed worlds will strand.
+- **Adaptive payloads**: each fleet decides in real time - shell standing
+  defenses open first (sound doctrine), disrupt the first still-operating
+  industry on its hit list, fall back to bombardment or stockpile raids when
+  nothing else remains. Fleet-by-fleet operations reports on every raid intel.
+- **Multi-front coalition strikes**: each coalition member flies its own raid,
+  under its own flag, against the player colony that most offends *its own*
+  grievance - arrivals synchronized so you cannot beat them piecemeal. The
+  operation is judged as a whole: one contingent wiped is a casualty report,
+  not a defeat.
+- **Sabotage window**: every strike opens with a planning phase at its staging
+  market. Knock out that market's military base or high command in time and
+  the contingent is aborted outright.
+- **Item heists**: at high escalation, an oversized contingent storms the vault
+  for an installed item (nanoforge, synchrotron...) while coalition partners
+  raid diversionary fronts. Needs an overwhelming ground advantage; stolen
+  items are installed on their own markets and can be raided back.
+- **Ground truth**: raids only take or disrupt what they can actually reach -
+  the same raid-strength-vs-defender-strength check the player's own raids
+  face, planetary shield and garrison included.
 
-- [x] Phase 1: share tracker, per-faction grievance intel (crisis-style
-      screen), warning/ultimatum stages, automatic compliance detection,
-      calm-based expiry, debug mode (LunaLib menu: reveal all stats, force
-      grievance, force ultimatum, 10x clock, verbose logging)
-- [x] Phase 2: ultimatum orders dialog (tribute/defy; comply is physical),
-      monthly tribute payments (freeze accrual, lapse if unpayable),
-      enforcement strikes (disruption raids vs offending industries),
-      tactical bombardment at escalation, stockpile theft from storage on
-      strike success, post-strike truce, defeat venting + escalation,
-      force-strike debug toggle
-- [x] Phase 3: item heists (marine-constrained ground ops, steal-back via raids)
-- [x] Phase 4: military threat track (arsenal rivalry causes, commission response, military-target strikes)
-- [x] Phase 5: strength gate (pooled military scores vs gateRatio x player), coalitions (mutually non-hostile aggrieved factions; mixed-roster fleets via CoalitionRaidFGI; pooled strike capacity; defeat demoralizes partners out of the pool), earned-silence endgame (gated grievances hold below the ultimatum line)
-- [x] Phase 6: counterplay accounting - player raids/bombardments spike the target grievance (and can trigger enforcement outright); saturation bombardment ripples (emboldened rivals spike, weak ones cowed out of coalition pools); single guarded enforcement-launch path enforcing the strike cooldown properly. Deciv venting proved emergent (live share/score math). Vanilla relations untouched by design
+## Strength gate and coalitions
 
-## Vanilla reference points (mods/.api-src)
+Factions only press demands while militarily on par or superior (military
+score = functional military infrastructure - garrisonless trade ports project
+no force). Too weak alone, aggrieved factions pool into a coalition behind a
+single leader; defeat their joint strike and partners can wash their hands of
+the alliance - demoralized out of coalition pools and their own resentment
+vented. Outgrow every plausible coalition and the demands stop: earned silence.
 
-- `PunitiveExpeditionManager.getExpeditionReasons()` - the share-comparison
-  idiom (retired vanilla system this mod resurrects)
-- `BaseEventIntel` / `HostileActivityEventIntel` - the event screen framework
-- `HegemonyInspectionIntel` + `HIOrdersInteractionDialogPluginImpl` - the
-  demand-with-options pattern for Phase 2
-- `GenericRaidFGI` / `FGRaidParams.setDisrupt()` / `.setBombardment()` -
-  enforcement fleets for Phase 2/3
+## Counterplay ladder
+
+- Defeat strike fleets (resets their bar, but escalates the next attempt)
+- Abort strikes at the source during the planning window
+- Tac-bomb their competing production or war industry (shrinks their strikes)
+- Settle, comply, or take a commission
+- Sat-bomb a competitor into the ground - at vanilla atrocity prices, and the
+  victim's grievance converts into a permanent **vendetta**: no settlements,
+  no truces, saturation bombardment in return, ending only when one side has
+  no worlds left
+- **Total War** (config, off by default): strips story-critical protection
+  from every market - any world can be bombed down and destroyed, factions can
+  be entirely eliminated. Questlines anchored on destroyed worlds will strand.
+
+Your own raids and bombardments against an aggrieved faction spike its
+resentment instantly - and can trigger enforcement outright.
+
+## Config
+
+Everything is tunable via the LunaLib menu (detection thresholds, accrual
+rates, strike scaling, coalition behavior, vendetta, Total War, debug tools).
+Without LunaLib the mod uses `data/config/settings.json`.
 
 ## Build
 
-`compile.ps1` (JDK 17 via JAVA_HOME, same as sibling mods).
-
-
+`compile.ps1` (JDK 17 via JAVA_HOME, same as sibling mods Remnant Retribution
+and Threat Incursion).

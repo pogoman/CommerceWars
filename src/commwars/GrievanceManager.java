@@ -23,6 +23,8 @@ import com.fs.starfarer.api.util.Misc;
 public class GrievanceManager implements EveryFrameScript {
 
 	protected IntervalUtil interval = new IntervalUtil(1f, 1.2f);
+	// the single faction allowed to front a coalition this tick (sector-wide)
+	protected transient String tickBlocAnchor = null;
 	// strikes get a fast clock so consequences (theft, truce, vent) land
 	// right after the raid, not up to a week later
 	protected IntervalUtil strikeInterval = new IntervalUtil(0.8f, 1.2f);
@@ -70,8 +72,19 @@ public class GrievanceManager implements EveryFrameScript {
 		Map<String, MilitaryScore.MilCause> mil = computeMilitaryCauses();
 		Map<String, GrievanceEventIntel> active = getActiveGrievances();
 
+		// one coalition anchor at a time, sector-wide (see computeBlocAnchor)
+		tickBlocAnchor = CoalitionCalc.computeBlocAnchor(active.values());
+
 		// update existing grievances with fresh cause snapshots
 		for (GrievanceEventIntel intel : active.values()) {
+			// a permanent pather agreement (the vanilla "holy peace until the
+			// End of Days", however earned - including the planetkiller handover)
+			// pacifies the Luddic Path for good: end their grievance and never
+			// reopen it while the agreement holds
+			if (isPatherPeaceActive(intel.getFactionId())) {
+				intel.endForPatherPeace();
+				continue;
+			}
 			intel.ensureFactors();
 			intel.updateCauses(all.get(intel.getFactionId()));
 			intel.setMilitaryCause(mil.get(intel.getFactionId()));
@@ -131,6 +144,12 @@ public class GrievanceManager implements EveryFrameScript {
 			if (factionId.equals(Misc.getCommissionFactionId())) {
 				CommWarsConfig.log("Skipping grievance for " + factionId
 						+ ": player holds a commission with them");
+				continue;
+			}
+			// the Path holds a permanent agreement with you - holy peace, no grievance
+			if (isPatherPeaceActive(factionId)) {
+				CommWarsConfig.log("Skipping grievance for " + factionId
+						+ ": permanent pather agreement in effect");
 				continue;
 			}
 
@@ -233,6 +252,12 @@ public class GrievanceManager implements EveryFrameScript {
 	 * simmers below the ultimatum line. The earned-silence endgame.
 	 */
 	protected void updateGate(GrievanceEventIntel intel, java.util.Set<String> activeIds) {
+		// membership and the strength gate FREEZE while fleets are committed:
+		// a faction cannot join (or slip out of) a coalition whose enforcement
+		// action is already underway - the roster was fixed when the fleets
+		// sailed. Recomputation resumes once the strike resolves.
+		if (intel.isStrikeActive() || intel.getSupportingStrikeFor() != null) return;
+
 		if (!CommWarsConfig.gateEnabled()) {
 			intel.setGateState(true, new ArrayList<String>());
 			return;
@@ -250,6 +275,13 @@ public class GrievanceManager implements EveryFrameScript {
 		List<String> partners = CoalitionCalc.partnersFor(intel.getFactionId(), activeIds);
 		float pooled = CoalitionCalc.pooledScore(intel.getFactionId(), partners);
 		boolean emboldened = pooled >= threshold;
+		// one coalition anchor at a time, sector-wide: only the strongest
+		// too-weak faction fronts a bloc - everyone else stays gated and backs
+		// it where eligible, instead of each declaring an overlapping bloc
+		// borrowed from the same strong factions
+		if (emboldened && !intel.getFactionId().equals(tickBlocAnchor)) {
+			emboldened = false;
+		}
 		// keep the attempted partner list either way, for display/debug
 		intel.setGateState(emboldened, partners);
 
@@ -272,13 +304,20 @@ public class GrievanceManager implements EveryFrameScript {
 					+ " succeeded=" + strike.isSucceeded()
 					+ " ended=" + strike.isEnded());
 		}
+		// convert any raids still flying pre-adaptive locked bombardment orders
+		intel.retrofitAdaptiveRaids();
 		intel.checkStrikeRaidHit();
-		if (strike.isSucceeded()) {
+		// a coalition strike is several raids: judge the operation as a WHOLE.
+		// One contingent being wiped while others still sail is not an outcome -
+		// wait until every raid has run its course, then: any success = the
+		// strike succeeded; all beaten = a true joint defeat.
+		if (!intel.allStrikeRaidsResolved()) return;
+		if (intel.anyStrikeRaidSucceeded()) {
 			intel.onStrikeSucceeded();
-		} else if (strike.isAborted() || strike.isFailed()) {
+		} else if (strike.isAborted() || strike.isFailed() || strike.isEnded()) {
 			intel.onStrikeDefeated();
-		} else if (strike.isEnded()) {
-			// ended some other way; just clean up
+		} else {
+			// anchor ended some other way with no contingent succeeding
 			intel.clearStrike();
 		}
 	}
@@ -295,6 +334,23 @@ public class GrievanceManager implements EveryFrameScript {
 				&& intel.daysSinceLastStrikeEnd() >= CommWarsConfig.strikeCooldownDays()) {
 			enf.wasEverReached = false;
 		}
+	}
+
+	/**
+	 * Does the player hold a permanent pather agreement that should pacify this
+	 * faction? True only for the Luddic Path, and only while the vanilla
+	 * "$patherAgreementPermanent" flag is set - the same flag the vanilla
+	 * questline and the Remnant Retribution planetkiller handover both set.
+	 * Reads vanilla player memory directly, so it works with no dependency on
+	 * how the agreement was earned.
+	 */
+	protected boolean isPatherPeaceActive(String factionId) {
+		if (!CommWarsConfig.patherPeace()) return false;
+		if (!com.fs.starfarer.api.impl.campaign.ids.Factions.LUDDIC_PATH.equals(factionId)) {
+			return false;
+		}
+		return com.fs.starfarer.api.impl.campaign.rulecmd.HA_CMD
+				.playerPatherAgreementIsPermanent();
 	}
 
 	protected Map<String, GrievanceEventIntel> getActiveGrievances() {

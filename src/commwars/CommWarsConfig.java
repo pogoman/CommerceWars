@@ -101,6 +101,7 @@ public class CommWarsConfig {
 	public static float strikeDisruptDays()     { return f("commwars_strikeDisruptDays"); }
 	public static float strikeSummaryDays()     { return f("commwars_strikeSummaryDays"); }
 	public static float groundBreakMargin()     { return f("commwars_groundBreakMargin"); }
+	public static float groundStrPerFleetPoint(){ return f("commwars_groundStrPerFleetPoint"); }
 
 	// ---- item heists ----
 
@@ -113,6 +114,7 @@ public class CommWarsConfig {
 	public static boolean gateEnabled()         { return b("commwars_gateEnabled", true); }
 	public static boolean deferToVanillaCrises(){ return b("commwars_deferToVanillaCrises", true); }
 	public static boolean totalWar()            { return b("commwars_totalWar", false); }
+	public static boolean patherPeace()         { return b("commwars_patherAgreementPeace", true); }
 
 	// ---- vendetta ----
 
@@ -124,6 +126,7 @@ public class CommWarsConfig {
 	public static float coalitionDropoutChance(){ return f("commwars_coalitionDropoutChance"); }
 	public static float coalitionDropoutDays()  { return f("commwars_coalitionDropoutDays"); }
 	public static int coalitionMinAnger()       { return i("commwars_coalitionMinAnger"); }
+	public static int dropoutVentProgress()     { return i("commwars_dropoutVentProgress"); }
 
 	// ---- retaliation (phase 6) ----
 

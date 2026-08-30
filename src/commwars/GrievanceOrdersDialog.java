@@ -102,6 +102,16 @@ public class GrievanceOrdersDialog implements InteractionDialogPlugin {
 				+ "for themselves. Downgrade or demolish the producing industries - or otherwise lose "
 				+ "market share - and the dispute will cool on its own.");
 
+		if (TributeCalc.isCoalitionSettlement(intel)) {
+			java.util.List<String> allIds = new java.util.ArrayList<String>();
+			allIds.add(intel.getFactionId());
+			allIds.addAll(intel.getCoalitionPartners());
+			textPanel.addPara("This ultimatum is pressed by a coalition. Reparations must satisfy "
+					+ "every faction behind it - %s - so a settlement buys down the whole bloc's "
+					+ "resentment at once, and is priced accordingly.", h,
+					intel.getPartnerNames(allIds));
+		}
+
 		if (intel.getMilitaryCause() != null) {
 			textPanel.addPara("Your military buildup is also contested. A commission with "
 					+ factionName + " would place your arsenal nominally under "
@@ -163,7 +173,7 @@ public class GrievanceOrdersDialog implements InteractionDialogPlugin {
 	}
 
 	protected void addSettleOption(OptionId id, String label, int points, float credits) {
-		int cost = TributeCalc.costFor(intel, points);
+		int cost = TributeCalc.coalitionCostFor(intel, points);
 		String desc = id == OptionId.SETTLE_FULL
 				? label + ": clear all resentment for " + Misc.getDGSCredits(cost)
 				: label + ": reduce resentment by " + points + " for " + Misc.getDGSCredits(cost);
@@ -179,7 +189,9 @@ public class GrievanceOrdersDialog implements InteractionDialogPlugin {
 
 		Color h = Misc.getHighlightColor();
 		textPanel.addPara("The payment of %s will be made immediately, reducing resentment "
-				+ "by %s. The dispute itself remains: as long as your exports keep crowding "
+				+ "by %s" + (TributeCalc.isCoalitionSettlement(intel)
+					? " for every faction in the coalition" : "")
+				+ ". The dispute itself remains: as long as your exports keep crowding "
 				+ "theirs, resentment will build again.", h,
 				Misc.getDGSCredits(pendingCost), "" + pendingPoints);
 
@@ -241,7 +253,7 @@ public class GrievanceOrdersDialog implements InteractionDialogPlugin {
 						: option == OptionId.SETTLE_LARGE ? LARGE_POINTS
 						: intel.getProgress();
 				pendingPoints = Math.min(pendingPoints, intel.getProgress());
-				pendingCost = TributeCalc.costFor(intel, pendingPoints);
+				pendingCost = TributeCalc.coalitionCostFor(intel, pendingPoints);
 				addConfirmOptions();
 				break;
 			case CONFIRM_SETTLE: {
@@ -254,12 +266,17 @@ public class GrievanceOrdersDialog implements InteractionDialogPlugin {
 					break;
 				}
 				playerFleet.getCargo().getCredits().subtract(pendingCost);
-				intel.paySettlement(pendingPoints, pendingCost);
+				TributeCalc.applyCoalitionSettlement(intel, pendingPoints);
 				textPanel.addPara("Settlement of " + Misc.getDGSCredits(pendingCost)
-						+ " paid. Resentment reduced by " + pendingPoints + ".",
+						+ " paid. Resentment reduced by " + pendingPoints
+						+ (TributeCalc.isCoalitionSettlement(intel)
+							? " across the coalition." : "."),
 						Misc.getPositiveHighlightColor());
 				CommWarsConfig.log("Player settled " + pendingPoints + " points with "
-						+ intel.getFactionId() + " for " + pendingCost);
+						+ (TributeCalc.isCoalitionSettlement(intel)
+							? "the " + intel.getFactionId() + " coalition"
+							: intel.getFactionId())
+						+ " for " + pendingCost);
 				addChoiceOptions();
 				break;
 			}
