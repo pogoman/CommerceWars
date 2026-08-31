@@ -61,14 +61,14 @@ public class GateFactor extends BaseEventFactor {
 						+ "The grievance simmers below the point of ultimatum until the balance "
 						+ "of power shifts.", 0f);
 				if (CommWarsConfig.debugMode()) {
-					float own = MilitaryScore.factionScore(g.getFaction());
-					float pooled = CoalitionCalc.pooledScore(g.getFactionId(), g.getCoalitionPartners());
-					tooltip.addPara("DEBUG: own %s + partners = pooled %s vs gate threshold %s "
-							+ "(player %s x ratio %s)", 10f, h,
-							"" + (int) own, "" + (int) pooled,
-							"" + (int) CoalitionCalc.gateThreshold(),
-							"" + (int) MilitaryScore.playerScore(),
-							"" + CommWarsConfig.gateRatio());
+					float own = CoalitionCalc.fieldable(g.getFaction());
+					float pooled = CoalitionCalc.pooledFieldable(
+							g.getFactionId(), g.getCoalitionPartners());
+					float needed = EnforcementStrike.neededFor(g);
+					tooltip.addPara("DEBUG: fieldable %s + partners = pooled %s vs needed %s "
+							+ "(their target's defenses + your fleet x %s)", 10f, h,
+							"" + (int) own, "" + (int) pooled, "" + (int) needed,
+							"" + CommWarsConfig.playerFleetWeight());
 				}
 			}
 		};

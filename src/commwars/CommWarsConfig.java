@@ -89,10 +89,13 @@ public class CommWarsConfig {
 
 	public static float strikeBaseDifficulty()  { return f("commwars_strikeBaseDifficulty"); }
 	public static float strikeEscalationMult()  { return f("commwars_strikeEscalationMult"); }
-	public static float strikeMaxDifficulty()   { return f("commwars_strikeMaxDifficulty"); }
 	public static float overmatch()             { return f("commwars_overmatch"); }
 	public static float strengthPerDifficulty() { return f("commwars_strengthPerDifficulty"); }
-	public static float capacityMult()          { return f("commwars_capacityMult"); }
+	// NOTE: fresh keys (not the old capacityMult/gateRatio) so stale values
+	// saved by LunaLib under the old names cannot silently resurrect the old
+	// fraction-of-strength behavior
+	public static float fieldableFraction()     { return f("commwars_fieldableFraction"); }
+	public static float playerFleetWeight()     { return f("commwars_playerFleetWeight"); }
 	public static int strikeResetProgress()     { return i("commwars_strikeResetProgress"); }
 	public static int strikeDefeatReset()       { return i("commwars_strikeDefeatReset"); }
 	public static float strikeCooldownDays()    { return f("commwars_strikeCooldownDays"); }
@@ -122,7 +125,6 @@ public class CommWarsConfig {
 	public static int vendettaStartProgress()   { return i("commwars_vendettaStartProgress"); }
 	public static int vendettaPerMonth()        { return i("commwars_vendettaPerMonth"); }
 	public static float vendettaTempoMult()     { return f("commwars_vendettaTempoMult"); }
-	public static float gateRatio()             { return f("commwars_gateRatio"); }
 	public static float coalitionDropoutChance(){ return f("commwars_coalitionDropoutChance"); }
 	public static float coalitionDropoutDays()  { return f("commwars_coalitionDropoutDays"); }
 	public static int coalitionMinAnger()       { return i("commwars_coalitionMinAnger"); }

@@ -242,6 +242,45 @@ public class EnforcementStrike {
 	}
 
 
+	/**
+	 * Strength (in strike-difficulty points) it takes to reliably crack a
+	 * player market: the defense fleets and battlestation actually in its
+	 * system, PLUS the player's own fleet. The player defends their worlds in
+	 * person - a strike sized against static defenses alone arrives
+	 * underpowered every time. WarSimScript deliberately excludes the player
+	 * fleet from faction strength, so it is added here explicitly, weighted by
+	 * playerFleetWeight (a player-piloted fleet punches above its paper
+	 * strength).
+	 */
+	public static float neededAgainst(MarketAPI target) {
+		FactionAPI player = Global.getSector().getPlayerFaction();
+		float targetStr = WarSimScript.getFactionStrength(player, target.getStarSystem())
+				+ WarSimScript.getStationStrength(player, target.getStarSystem(),
+						target.getPrimaryEntity());
+		CampaignFleetAPI playerFleet = Global.getSector().getPlayerFleet();
+		if (playerFleet != null) {
+			targetStr += playerFleet.getEffectiveStrength()
+					* CommWarsConfig.playerFleetWeight();
+		}
+		return targetStr / CommWarsConfig.strengthPerDifficulty()
+				* CommWarsConfig.overmatch();
+	}
+
+	/**
+	 * What "getting the job done" takes for this grievance: the strength
+	 * needed against the market its enforcement strike would actually target.
+	 * The strength gate measures factions against this same number, so a
+	 * faction that passes the gate can always field a credible strike. Zero
+	 * when the player has no strikeable colonies.
+	 */
+	public static float neededFor(GrievanceEventIntel intel) {
+		MarketAPI target = intel.isVendetta() ? findTarget(new ArrayList<String>())
+				: intel.isMilitaryDominant() ? findMilitaryTarget()
+				: findTarget(intel.getCauseCommodityIds());
+		if (target == null) return 0f;
+		return neededAgainst(target);
+	}
+
 	/** Largest market of the faction that can actually mount the strike. */
 	public static MarketAPI findSource(FactionAPI faction) {
 		MarketAPI best = null;
@@ -298,13 +337,9 @@ public class EnforcementStrike {
 				&& intel.getEscalation() >= CommWarsConfig.tacBombEscalation();
 
 		// --- grounded strength budget ---
-		// enough to ensure victory over the target's actual defenses...
-		FactionAPI player = Global.getSector().getPlayerFaction();
-		float targetStr = WarSimScript.getFactionStrength(player, target.getStarSystem())
-				+ WarSimScript.getStationStrength(player, target.getStarSystem(),
-						target.getPrimaryEntity());
-		float needed = targetStr / CommWarsConfig.strengthPerDifficulty()
-				* CommWarsConfig.overmatch();
+		// enough to ensure victory over the target's actual defenses AND the
+		// player's own fleet (they know who will be defending in person)...
+		float needed = neededAgainst(target);
 
 		// ...escalated by a history of defiance...
 		float desired = Math.max(CommWarsConfig.strikeBaseDifficulty(), needed)
@@ -317,22 +352,29 @@ public class EnforcementStrike {
 			desired *= CommWarsConfig.heistForceMult();
 		}
 
-		// ...but hard-capped by what their military-industrial base can field -
-		// a coalition pools every member's capacity
-		float capacityScore = MilitaryScore.factionScore(intel.getFaction());
-		for (String partner : intel.getCoalitionPartners()) {
-			FactionAPI partnerFaction = Global.getSector().getFaction(partner);
-			if (partnerFaction != null) {
-				capacityScore += MilitaryScore.factionScore(partnerFaction);
+		// ...bounded only by what their military-industrial base can genuinely
+		// field - a coalition pools every member's full capacity. No fraction
+		// held back, no arbitrary ceiling: if they can field it, they send it.
+		// The strength gate passed them against this same "needed" number, so
+		// a launched strike is always enough force for the job as scouted.
+		// Partners pool ONLY when the strike actually splits into their raids
+		// (never for a vendetta) - no budgeting fleets that will never sail.
+		boolean coalition = !vendetta && !intel.getCoalitionPartners().isEmpty();
+		float capacity = CoalitionCalc.fieldable(intel.getFaction());
+		if (coalition) {
+			for (String partner : intel.getCoalitionPartners()) {
+				FactionAPI partnerFaction = Global.getSector().getFaction(partner);
+				if (partnerFaction != null) {
+					capacity += CoalitionCalc.fieldable(partnerFaction);
+				}
 			}
 		}
-		float capacity = capacityScore * CommWarsConfig.capacityMult();
 
-		float difficulty = Math.min(desired, Math.min(capacity, CommWarsConfig.strikeMaxDifficulty()));
+		float difficulty = Math.min(desired, capacity);
 		if (difficulty < 15f) difficulty = 15f; // token force floor: they always send *something*
 
-		intel.setLastStrikeMath("targetStr " + (int) targetStr
-				+ " -> needed " + (int) needed
+		intel.setLastStrikeMath("needed " + (int) needed
+				+ " (defenses + player fleet)"
 				+ " | desired " + (int) desired + " (escalation " + intel.getEscalation() + ")"
 				+ " | capacity " + (int) capacity
 				+ " | final " + (int) difficulty);
@@ -342,7 +384,6 @@ public class EnforcementStrike {
 		// operation: the ANCHOR storms the vault with an oversized contingent
 		// while the partners open their own fronts - diversion and smash-and-
 		// grab. Only a vendetta is one faction's business alone.
-		boolean coalition = !vendetta && !intel.getCoalitionPartners().isEmpty();
 		List<String> members = new ArrayList<String>();
 		members.add(intel.getFactionId());
 		if (coalition) members.addAll(intel.getCoalitionPartners());

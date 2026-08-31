@@ -10,15 +10,53 @@ import com.fs.starfarer.api.Global;
 import com.fs.starfarer.api.campaign.FactionAPI;
 
 /**
- * The strength gate and coalition math. A faction only presses demands while
- * its military-industrial power is on par with the player's; too weak alone,
- * it pools with other aggrieved factions it is not hostile to. Defeated
- * coalition members can lose their stomach for the fight and drop out of the
- * pool for a while.
+ * The strength gate and coalition math. The rules are deliberately simple:
+ *   1. A faction that can get the job done on its own - field enough force to
+ *      crack the target it would actually strike, the player's own fleet
+ *      included - presses solo. No coalition.
+ *   2. A faction that cannot pools ONLY with allies who also cannot; a
+ *      solo-capable faction never rides in (or props up) someone else's bloc.
+ *   3. Too weak even pooled: the grievance simmers below the ultimatum line.
+ * "Enough force" and "what they can field" are measured in the same units the
+ * strike sizing uses, so a faction that passes the gate can always actually
+ * send a credible strike. Defeated coalition members can lose their stomach
+ * for the fight and drop out of the pool for a while.
  */
 public class CoalitionCalc {
 
 	public static final String DEMORALIZED_KEY = "commwars_demoralized";
+
+	/**
+	 * Hysteresis on gate classifications: in-system defense strength wobbles
+	 * as patrols spawn and die (and as the player's fleet changes), so a
+	 * faction that qualified - solo-capable, or a credible bloc - keeps the
+	 * status until it falls clearly short of the requirement, not the instant
+	 * a patrol respawns. Without this, factions flap between solo grievances
+	 * and coalitions tick to tick.
+	 */
+	public static final float STICKY_MARGIN = 0.8f;
+
+	/**
+	 * What this faction can genuinely commit to one enforcement action, in
+	 * strike-difficulty points - its military-industrial score, nothing held
+	 * back. The same number caps the strike budget at launch.
+	 */
+	public static float fieldable(FactionAPI faction) {
+		return MilitaryScore.factionScore(faction) * CommWarsConfig.fieldableFraction();
+	}
+
+	/**
+	 * Rule 1: can this faction hold its own - field enough force to crack the
+	 * target its enforcement strike would actually go after, the player's own
+	 * fleet included? Sticky (see STICKY_MARGIN). True when the player has no
+	 * strikeable colonies: there is no job to size against, hence no coalition.
+	 */
+	public static boolean canPressSolo(GrievanceEventIntel intel) {
+		float needed = EnforcementStrike.neededFor(intel);
+		if (needed <= 0f) return true;
+		boolean held = intel.isEmboldened() && intel.getCoalitionPartners().isEmpty();
+		return fieldable(intel.getFaction()) >= needed * (held ? STICKY_MARGIN : 1f);
+	}
 
 	@SuppressWarnings("unchecked")
 	protected static Map<String, Long> demoralized() {
@@ -70,6 +108,15 @@ public class CoalitionCalc {
 			if (faction.isHostileTo(otherFaction)) continue;
 			GrievanceEventIntel otherIntel = GrievanceEventIntel.get(other);
 			if (otherIntel == null) continue;
+			// a blood feud is pursued alone - a vendetta faction neither
+			// fronts nor backs a trade coalition
+			if (otherIntel.isVendetta()) continue;
+			// Rule 2: coalitions are unions of the weak. A faction that can
+			// press its demands on its own fights its own corner - it never
+			// rides in anyone else's bloc, so its strength is never
+			// double-counted, and no bloc collapses the moment a strong
+			// member turns to its own grievance.
+			if (canPressSolo(otherIntel)) continue;
 			// a faction with fleets already committed to an enforcement action -
 			// its own, or backing another's - is not available for a new coalition
 			if (otherIntel.isStrikeActive()
@@ -86,34 +133,47 @@ public class CoalitionCalc {
 		return result;
 	}
 
-	public static float pooledScore(String factionId, List<String> partners) {
-		float total = MilitaryScore.factionScore(Global.getSector().getFaction(factionId));
+	public static float pooledFieldable(String factionId, List<String> partners) {
+		float total = fieldable(Global.getSector().getFaction(factionId));
 		for (String partner : partners) {
-			total += MilitaryScore.factionScore(Global.getSector().getFaction(partner));
+			total += fieldable(Global.getSector().getFaction(partner));
 		}
 		return total;
 	}
 
 	/**
 	 * One coalition anchor at a time, SECTOR-WIDE: of every too-weak faction
-	 * that could front a coalition this tick, only the strongest actually
-	 * does - the rest stay gated (and back the anchor's bloc where eligible).
-	 * A per-pool leadership contest is not enough: two weak factions whose
-	 * mutual anger is below the partner threshold never appear in each
-	 * other's pools, so each crowns itself leader of "its own" bloc borrowed
-	 * from the same strong backers - N overlapping coalition screens again.
-	 * Frozen grievances (fleets committed) keep their state and don't compete.
+	 * that could front a coalition this tick, only one actually does - the
+	 * rest stay gated (and back the anchor's bloc where eligible). A per-pool
+	 * leadership contest is not enough: two weak factions whose mutual anger
+	 * is below the partner threshold never appear in each other's pools, so
+	 * each crowns itself leader of "its own" bloc borrowed from the same
+	 * backers - N overlapping coalition screens again. Frozen grievances
+	 * (fleets committed) keep their state and don't compete. The incumbent
+	 * anchor keeps the role while it remains eligible: re-crowning whenever
+	 * raw strengths cross would dissolve one bloc and announce another for
+	 * no real reason.
 	 */
-	public static String computeBlocAnchor(Collection<GrievanceEventIntel> active) {
-		float threshold = gateThreshold();
+	public static String computeBlocAnchor(Collection<GrievanceEventIntel> active,
+										   String prevAnchor) {
 		String anchor = null;
 		float best = -1f;
 		for (GrievanceEventIntel intel : active) {
 			if (intel.isStrikeActive() || intel.getSupportingStrikeFor() != null) continue;
+			// a patron does not front a coalition against its own commissioned
+			// client: exclude it from the anchor contest entirely, so the bloc
+			// forms around a legitimate leader (or not at all) instead of the
+			// faction you serve.
+			if (intel.isCommissionSuppressed()) continue;
+			// a blood feud never fronts a coalition: its strike would not
+			// split, so a bloc's pooled strength would be fleets that never
+			// actually sail
+			if (intel.isVendetta()) continue;
 			FactionAPI faction = intel.getFaction();
 			if (faction == null) continue;
-			float own = MilitaryScore.factionScore(faction);
-			if (own >= threshold) continue; // presses solo, needs no coalition
+			if (canPressSolo(intel)) continue; // presses solo, needs no coalition
+			if (intel.getFactionId().equals(prevAnchor)) return prevAnchor;
+			float own = fieldable(faction);
 			if (own > best || (own == best && anchor != null
 					&& intel.getFactionId().compareTo(anchor) < 0)) {
 				best = own;
@@ -121,10 +181,6 @@ public class CoalitionCalc {
 			}
 		}
 		return anchor;
-	}
-
-	public static float gateThreshold() {
-		return MilitaryScore.playerScore() * CommWarsConfig.gateRatio();
 	}
 
 	/** Debug string listing every currently-demoralized faction. */

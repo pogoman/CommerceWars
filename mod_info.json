@@ -2,7 +2,7 @@
 	"id": "commwars",
 	"name": "Commerce Wars",
 	"author": "Tristan",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Success paints a target. Factions whose export markets you muscle in on develop grievances - first diplomatic notes, then ultimatums, then enforcement fleets sent to disrupt your industries and raid your stockpiles. Comply, pay them off, or defy them and fight. Military buildup draws the same attention. Grow strong enough and no single faction dares press a demand alone... so they form coalitions. Standalone; configurable via LunaLib (optional).",
 	"gameVersion": "0.98a-RC8",
 	"modPlugin": "commwars.CommWarsModPlugin",

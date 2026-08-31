@@ -25,9 +25,11 @@ demand alone... so they form coalitions. Vanilla API only; LunaLib optional
    settlements that buy down accumulated resentment (a coalition must be paid
    as a bloc), take a commission to lay a military grievance to rest, or defy
    and fight.
-4. **Enforcement**: strike fleets sized against your actual defenses but hard
-   capped by the faction's real military-industrial capacity - no magic fleets.
-   Disrupting their war industry genuinely shrinks what they can send.
+4. **Enforcement**: strike fleets sized against your actual defenses - your
+   personal fleet included, since they know you will defend in person - and
+   bounded only by the faction's real military-industrial capacity: no magic
+   fleets, but nothing held back either. Disrupting their war industry
+   genuinely shrinks what they can send.
 
 ## Enforcement strikes
 
@@ -53,12 +55,15 @@ demand alone... so they form coalitions. Vanilla API only; LunaLib optional
 
 ## Strength gate and coalitions
 
-Factions only press demands while militarily on par or superior (military
-score = functional military infrastructure - garrisonless trade ports project
-no force). Too weak alone, aggrieved factions pool into a coalition behind a
-single leader; defeat their joint strike and partners can wash their hands of
-the alliance - demoralized out of coalition pools and their own resentment
-vented. Outgrow every plausible coalition and the demands stop: earned silence.
+Simple rules. A faction that can field enough force to crack the colony it
+would strike - your own fleet included - presses solo: no coalition. One that
+cannot pools only with allies who also cannot, behind a single leader. Too
+weak even pooled: resentment simmers below the ultimatum line. Fieldable
+force is real military infrastructure (garrisonless trade ports project no
+force), so what passes the gate can always launch a credible strike. Defeat a
+joint strike and partners can wash their hands of the alliance - demoralized
+out of coalition pools and their own resentment vented. Outgrow every
+plausible coalition and the demands stop: earned silence.
 
 ## Counterplay ladder
 

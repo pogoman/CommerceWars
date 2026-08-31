@@ -348,11 +348,17 @@ public class GrievanceEventIntel extends BaseEventIntel {
 		this.emboldened = nowEmboldened;
 
 		if (wasEmboldened && !nowEmboldened) {
-			CommWarsConfig.log("Grievance with " + factionId + " GATED (too weak to press)");
-			announce(Misc.ucFirst(getFaction().getDisplayNameWithArticle())
-					+ " seethes over its grievances against you - but lacks the strength to "
-					+ "press them, even counting every ally it could rally. For now, it can "
-					+ "only watch.", Misc.getPositiveHighlightColor());
+			CommWarsConfig.log("Grievance with " + factionId + " gated/frozen (emboldened -> false)");
+			// only genuine weakness earns the seething-impotence note. When the
+			// coalition dissolved because you took a commission (or a vanilla
+			// crisis took over), that message would be a lie - stay silent; the
+			// suppression factor and its tooltip already explain the freeze.
+			if (!isCommissionSuppressed() && !isDeferredToVanillaCrisis()) {
+				announce(Misc.ucFirst(getFaction().getDisplayNameWithArticle())
+						+ " seethes over its grievances against you - but lacks the strength to "
+						+ "press them, even counting every ally it could rally. For now, it can "
+						+ "only watch.", Misc.getPositiveHighlightColor());
+			}
 		} else if (!wasCoalition && isCoalitionBacked()) {
 			CommWarsConfig.log("Grievance with " + factionId + " now COALITION-backed: "
 					+ coalitionPartners);
@@ -368,7 +374,10 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	@Override
 	public void reportEconomyTick(int iterIndex) {
 		super.reportEconomyTick(iterIndex);
-		if (!emboldened && getProgress() > GATE_CAP) {
+		// the gate holds a too-weak grievance below the ultimatum line - but a
+		// commission FREEZES progress where it stands rather than clamping it, so
+		// resigning resumes the dispute exactly where it left off.
+		if (!emboldened && getProgress() > GATE_CAP && !isCommissionSuppressed()) {
 			setProgress(GATE_CAP);
 		}
 	}
@@ -1437,12 +1446,18 @@ public class GrievanceEventIntel extends BaseEventIntel {
 	public boolean isPaused() {
 		if (isVendetta()) return false;          // a blood feud never rests
 		if (isStrikeActive()) return false;      // its own strike is in progress
+		// a commission (or a vanilla colony crisis) freezes the grievance no
+		// matter what else is true - INCLUDING a faction you serve that would
+		// otherwise be fronting its own coalition. These MUST come before the
+		// coalition-leader early-return below: check them after it and a
+		// commissioned anchor slips through and keeps pressing an ultimatum
+		// against its own client.
+		if (isCommissionSuppressed()) return true;   // you serve their flag
+		if (isDeferredToVanillaCrisis()) return true;// a vanilla crisis speaks for it
 		if (isCoalitionBacked()) return false;   // it leads its own coalition
 		if (!getBackedFactions().isEmpty()) return true;  // only backing another
 		if (supportingStrikeFor != null) return true;     // in a partner's strike
 		if (!emboldened) return true;            // too weak to press (the gate)
-		if (isCommissionSuppressed()) return true;   // you serve their flag
-		if (isDeferredToVanillaCrisis()) return true;// a vanilla crisis speaks for it
 		if (isInTruce()) return true;            // holding fire after a strike
 		return false;
 	}
@@ -1826,16 +1841,20 @@ public class GrievanceEventIntel extends BaseEventIntel {
 				"" + isDeferredToVanillaCrisis(),
 				"" + vendetta);
 
-		info.addPara("faction milScore: %s (capacity %s) | player milScore: %s", 3f, h,
+		com.fs.starfarer.api.campaign.CampaignFleetAPI playerFleet =
+				Global.getSector().getPlayerFleet();
+		info.addPara("faction milScore: %s (fieldable %s) | player milScore: %s | "
+				+ "player fleetStr: %s", 3f, h,
 				"" + (int) MilitaryScore.factionScore(getFaction()),
-				"" + (int) (MilitaryScore.factionScore(getFaction()) * CommWarsConfig.capacityMult()),
-				"" + (int) MilitaryScore.playerScore());
+				"" + (int) CoalitionCalc.fieldable(getFaction()),
+				"" + (int) MilitaryScore.playerScore(),
+				"" + (int) (playerFleet != null ? playerFleet.getEffectiveStrength() : 0f));
 
-		info.addPara("gate: emboldened %s | pooled %s vs threshold %s | partners: %s | "
+		info.addPara("gate: emboldened %s | pooled %s vs needed %s | partners: %s | "
 				+ "demoralized: %s", 3f, h,
 				"" + emboldened,
-				"" + (int) CoalitionCalc.pooledScore(factionId, coalitionPartners),
-				"" + (int) CoalitionCalc.gateThreshold(),
+				"" + (int) CoalitionCalc.pooledFieldable(factionId, coalitionPartners),
+				"" + (int) EnforcementStrike.neededFor(this),
 				coalitionPartners.isEmpty() ? "none" : coalitionPartners.toString(),
 				CoalitionCalc.describeDemoralized());
 

@@ -60,18 +60,20 @@
 	# industries; a truce follows
 	"commwars_strikeBaseDifficulty": 20,
 	"commwars_strikeEscalationMult": 0.5,
-	# loose sanity ceiling only - the real limit is meant to be capacity (the
-	# faction's military-industrial base). 150 was tuned for single-target
-	# strikes and strangled coalitions once strikes split across members
-	"commwars_strikeMaxDifficulty": 400,
 
 	# Grounded scaling: strikes aim to beat the target's actual defenses
-	# (patrols + station strength x overmatch, converted to difficulty via
-	# strengthPerDifficulty), but are capped by the faction's real
-	# military-industrial capability (score x capacityMult) - no magic fleets
+	# (patrols + station strength) PLUS the player's own fleet - the player
+	# defends in person, and playerFleetWeight is how heavily their fleet
+	# counts (above 1: a player-piloted fleet punches above its paper
+	# strength). The sum x overmatch converts to difficulty via
+	# strengthPerDifficulty. The only cap is the faction's (or coalition's
+	# pooled) real military-industrial capability (score x fieldableFraction)
+	# - no magic fleets, but nothing held back either: if they can field it,
+	# they send it
 	"commwars_overmatch": 1.25,
 	"commwars_strengthPerDifficulty": 12,
-	"commwars_capacityMult": 0.75,
+	"commwars_playerFleetWeight": 1.5,
+	"commwars_fieldableFraction": 1.0,
 	"commwars_strikeResetProgress": 300,
 	"commwars_strikeDefeatReset": 200,
 	"commwars_strikeCooldownDays": 60,
@@ -115,12 +117,11 @@
 	# overwhelming assault takes proportionally fewer losses. Only casualties
 	# are a lasting drain (survivors return); they recover over heistMusterDays
 
-	# Strength gate: a faction only presses demands (ultimatum/enforcement)
-	# while its military-industrial score - pooled with any coalition partners
-	# it can rally (mutually non-hostile aggrieved factions) - is at least
-	# gateRatio x the player's score. Too weak: the bar holds below the
-	# ultimatum line. Defeating a coalition strike can demoralize partners
-	# out of the pool for a while
+	# Strength gate: simple rules. A faction that can field enough force to
+	# crack the target it would strike (player fleet included) presses solo -
+	# no coalition. One that cannot pools ONLY with allies who also cannot.
+	# Too weak even pooled: the bar holds below the ultimatum line. Defeating
+	# a coalition strike can demoralize partners out of the pool for a while
 	"commwars_gateEnabled": true,
 	"commwars_deferToVanillaCrises": true,
 
@@ -146,7 +147,6 @@
 	"commwars_vendettaStartProgress": 400,
 	"commwars_vendettaPerMonth": 25,
 	"commwars_vendettaTempoMult": 0.35,
-	"commwars_gateRatio": 0.8,
 	"commwars_coalitionDropoutChance": 0.5,
 	"commwars_coalitionDropoutDays": 180,
 	"commwars_coalitionMinAnger": 200,

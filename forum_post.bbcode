@@ -1,5 +1,5 @@
 [center][size=20pt][b]Commerce Wars[/b][/size]
-[i]v0.2.0 - late-game market and military pressure - for Starsector 0.98a[/i][/center]
+[i]v0.3.0 - late-game market and military pressure - for Starsector 0.98a[/i][/center]
 
 [hr]
 
@@ -11,17 +11,18 @@ Success paints a target. You out-produce the Persean League on heavy machinery, 
 
 [size=14pt][b]Download[/b][/size]
 
-[url=https://github.com/pogoman/CommerceWars/releases/download/v0.2.0/CommerceWars-0.2.0.zip]CommerceWars-0.2.0.zip[/url]
+[url=https://github.com/pogoman/CommerceWars/releases/download/v0.3.0/CommerceWars-0.3.0.zip]CommerceWars-0.3.0.zip[/url]
 
 Extract into your Starsector [tt]mods/[/tt] folder and enable it in the launcher. Safe to add to an existing save. LunaLib optional (full in-game config menu).
 
 [hr]
 
 [size=14pt][b]How grievances work[/b][/size]
-
 Every week the mod recomputes sector export market shares - the same numbers you see on the commodity info screens. A faction develops a grievance over a commodity when it is a significant producer and your share rivals theirs. Each aggrieved faction gets a colony-crisis-style intel screen: a resentment bar from 0 to 600, with a diplomatic warning at 200, a formal ultimatum at 400, and enforcement fleets at 600. Per-commodity monthly factors show exactly why they are angry.
 
 Compliance detection is automatic. The demand is "get your share down" - how is your business. Downgrade the industry, demolish it, lose the share to a rival, or bomb your own customer base; the vanilla economy recomputes and the dispute cools on its own.
+
+[img]https://raw.githubusercontent.com/pogoman/CommerceWars/main/Picture3.png[/img]
 
 Your options at the ultimatum:
 [list]
@@ -35,8 +36,9 @@ Your options at the ultimatum:
 
 [size=14pt][b]Enforcement - grounded, adaptive, multi-front[/b][/size]
 
-Strike fleets are sized to overmatch your actual defenses, but hard capped by the faction's real military-industrial capacity: bases, stations, war industry. No magic fleets - disrupting their war industry genuinely shrinks what they can send at you.
+Strike fleets are sized to overmatch your actual defenses - [i]including your own fleet[/i], because they know you will defend in person - and bounded only by the faction's real military-industrial capacity: bases, stations, war industry. No magic fleets, but nothing held back either: if they can field it, they send it, and if they cannot field enough they do not come at all. Disrupting their war industry genuinely shrinks what they can send at you.
 
+[img]https://raw.githubusercontent.com/pogoman/CommerceWars/main/Picture4.png[/img]
 [list]
 [li][b]Adaptive payloads[/b]: each fleet decides in real time. Standing defenses too strong to storm? Shell them open first. Then disrupt the industries behind the grievance, one landing at a time - falling back to bombardment or stockpile raids when nothing worth raiding remains. Every raid intel carries a fleet-by-fleet operations report.[/li]
 [li][b]Coalitions strike on multiple fronts[/b]: factions too weak to press demands alone pool behind a leader. Their joint strike launches one raid per member, under its own flag, against the colony that most offends [i]its own[/i] grievance - and arrivals are synchronized, so you cannot repel them piecemeal with one fleet and a repair dock.[/li]
@@ -49,9 +51,9 @@ Strike fleets are sized to overmatch your actual defenses, but hard capped by th
 
 [size=14pt][b]The strength gate - and earned silence[/b][/size]
 
-Factions only press demands while militarily on par with you or superior. Military score is functional military infrastructure only: patrol commands, bases, high commands, battlestations, war industry. A sprawl of garrisonless trade ports projects no force.
+The rules are simple. A faction that can field enough force to crack the colony it would strike - your own fleet included - presses its demands solo. One that cannot pools only with allies who also cannot, behind a single leader; the pooled strength is what makes the ultimatum credible. Too weak even pooled: resentment simmers below the ultimatum line until the balance of power shifts.
 
-Too weak alone, aggrieved factions form a coalition behind a single leader - and the pooled strength is what makes the ultimatum credible. Break it: defeat their joint strike and partners can wash their hands of the alliance, demoralized out of coalition politics with their own resentment vented. Outgrow every plausible coalition and the demands simply stop. Earned silence.
+Fieldable force is functional military infrastructure only: patrol commands, bases, high commands, battlestations, war industry. A sprawl of garrisonless trade ports projects no force. Break a coalition: defeat their joint strike and partners can wash their hands of the alliance, demoralized out of coalition politics with their own resentment vented. Outgrow every plausible coalition and the demands simply stop. Earned silence.
 
 [hr]
 
@@ -76,10 +78,22 @@ Your own raids and bombardments against an aggrieved faction spike its resentmen
 [list]
 [li]Vanilla API only; no hard dependencies. LunaLib optional for the in-game config menu (detection thresholds, accrual rates, strike scaling, coalition behavior, vendetta, Total War, debug tools).[/li]
 [li]Safe to add to an existing save. Removing mid-save is not supported.[/li]
-[li]Plays fine alongside Nexerelin and the usual suspects - it reads the vanilla economy and uses vanilla raid mechanics.[/li]
 [li]Defers to vanilla colony crises: a faction whose vanilla crisis is active speaks through that instead of double-dipping.[/li]
 [/list]
 
-Sibling mods: [b]Remnant Retribution[/b] (the machines hold grudges too) and [b]Threat Incursion[/b].
-
 Source: [url=https://github.com/pogoman/CommerceWars]github.com/pogoman/CommerceWars[/url]
+
+
+[hr]
+[center][size=14pt][b]Recommended mod collection for ultimate late game experience[/b][/size][/center]
+[center][i]Standalone, vanilla-only, safe to add mid-save — designed to stack.[/i][/center]
+
+[list]
+[*][b][url=https://fractalsoftworks.com/forum/index.php?topic=35955]Threat Incursion[/url][/b] (v0.2.0) — the swarm colonizes the sector and raids the core worlds. Disrupt their supplies chains and steal their fabrication cores.
+[*][b][url=https://fractalsoftworks.com/forum/index.php?topic=35957]Commerce Wars[/url][/b] (v0.3.0) — dominate a faction's markets or the military balance and they push back: ultimatums, tribute, enforcement fleets.
+[*][b][url=https://fractalsoftworks.com/forum/index.php?topic=35956]Piracy Reworked[/url][/b] (v0.1.0) — the underworld runs on your money: black-market trade funds a self-sustaining pirate war economy.
+[*][b][url=https://fractalsoftworks.com/forum/index.php?topic=35940]Remnant Retribution[/url][/b] (v0.3.1) — a late-game colony crisis: prosper too hard and the Remnant come to collect.
+[*][b][url=https://fractalsoftworks.com/forum/index.php?topic=35939]Useful Planetary Shield[/url][/b] (v0.1.2) — planetary shields finally do something: they absorb orbital bombardment.
+[/list]
+
+[size=10pt][i]Disclaimer: This post and these mods were written using Claude's Fable AI model. Design and testing by pogoman.[/i][/size]

@@ -72,8 +72,9 @@ public class GrievanceManager implements EveryFrameScript {
 		Map<String, MilitaryScore.MilCause> mil = computeMilitaryCauses();
 		Map<String, GrievanceEventIntel> active = getActiveGrievances();
 
-		// one coalition anchor at a time, sector-wide (see computeBlocAnchor)
-		tickBlocAnchor = CoalitionCalc.computeBlocAnchor(active.values());
+		// one coalition anchor at a time, sector-wide (see computeBlocAnchor);
+		// sticky across ticks so the bloc doesn't re-crown on strength wobble
+		tickBlocAnchor = CoalitionCalc.computeBlocAnchor(active.values(), tickBlocAnchor);
 
 		// update existing grievances with fresh cause snapshots
 		for (GrievanceEventIntel intel : active.values()) {
@@ -246,10 +247,14 @@ public class GrievanceManager implements EveryFrameScript {
 	}
 
 	/**
-	 * The strength gate: a faction presses demands only while its military
-	 * power - alone or pooled with a coalition of fellow aggrieved factions -
-	 * is on par with the player's. Too weak even together: the grievance
-	 * simmers below the ultimatum line. The earned-silence endgame.
+	 * The strength gate, with deliberately simple rules:
+	 *   1. A faction that can get the job done alone - field enough force to
+	 *      crack the target it would strike, the player's fleet included -
+	 *      presses solo. No coalition.
+	 *   2. One that cannot pools with allies who also cannot (only the
+	 *      sector-wide anchor actually fronts the bloc).
+	 *   3. Too weak even pooled: the grievance simmers below the ultimatum
+	 *      line. The earned-silence endgame.
 	 */
 	protected void updateGate(GrievanceEventIntel intel, java.util.Set<String> activeIds) {
 		// membership and the strength gate FREEZE while fleets are committed:
@@ -258,27 +263,51 @@ public class GrievanceManager implements EveryFrameScript {
 		// sailed. Recomputation resumes once the strike resolves.
 		if (intel.isStrikeActive() || intel.getSupportingStrikeFor() != null) return;
 
+		// a patron does not front a coalition against its own commissioned
+		// client: while you serve their flag the grievance is frozen (accrual is
+		// suppressed in isAccrualSuppressed, progress is preserved in
+		// reportEconomyTick). Release any coalition it was leading so its backers
+		// are freed to press their own grievances, then stop - no gate math while
+		// the commission holds. Resigning resumes it where it left off.
+		if (intel.isCommissionSuppressed()) {
+			intel.setGateState(false, new ArrayList<String>());
+			return;
+		}
+
 		if (!CommWarsConfig.gateEnabled()) {
 			intel.setGateState(true, new ArrayList<String>());
 			return;
 		}
 
-		float threshold = CoalitionCalc.gateThreshold();
-		float own = MilitaryScore.factionScore(intel.getFaction());
-
-		if (own >= threshold) {
-			// strong enough alone: no coalition needed
+		// Rule 1: a faction that can hold its own presses solo - no coalition
+		if (CoalitionCalc.canPressSolo(intel)) {
 			intel.setGateState(true, new ArrayList<String>());
 			return;
 		}
 
+		// a blood feud is one faction's business - it never pools, so a weak
+		// vendetta faction simply stays gated until its own base can field
+		// the job (crippling their military genuinely delays the reprisal)
+		if (intel.isVendetta()) {
+			intel.setGateState(false, new ArrayList<String>());
+			if (intel.getProgress() > GrievanceEventIntel.GATE_CAP) {
+				intel.setProgress(GrievanceEventIntel.GATE_CAP);
+			}
+			return;
+		}
+
+		// Rule 2: too weak alone - pool with allies who also cannot press solo
 		List<String> partners = CoalitionCalc.partnersFor(intel.getFactionId(), activeIds);
-		float pooled = CoalitionCalc.pooledScore(intel.getFactionId(), partners);
-		boolean emboldened = pooled >= threshold;
-		// one coalition anchor at a time, sector-wide: only the strongest
-		// too-weak faction fronts a bloc - everyone else stays gated and backs
-		// it where eligible, instead of each declaring an overlapping bloc
-		// borrowed from the same strong factions
+		float needed = EnforcementStrike.neededFor(intel);
+		float pooled = CoalitionCalc.pooledFieldable(intel.getFactionId(), partners);
+		// sticky: an already-credible bloc stays credible until clearly short,
+		// so patrol-strength wobble doesn't flap the coalition in and out
+		boolean emboldened = pooled >= needed
+				* (intel.isEmboldened() ? CoalitionCalc.STICKY_MARGIN : 1f);
+		// one coalition anchor at a time, sector-wide: only the anchor fronts
+		// a bloc - everyone else stays gated and backs it where eligible,
+		// instead of each declaring an overlapping bloc borrowed from the
+		// same factions
 		if (emboldened && !intel.getFactionId().equals(tickBlocAnchor)) {
 			emboldened = false;
 		}
@@ -439,6 +468,36 @@ public class GrievanceManager implements EveryFrameScript {
 				.append(active.size()).append(" active grievance(s)");
 		for (Map.Entry<String, Float> e : totals.entrySet()) {
 			sb.append(" | ").append(e.getKey()).append("=").append(e.getValue());
+		}
+		// per-grievance state, so a "why did this drop / show / hide?" question
+		// can be answered from the log instead of inferred from the intel screen.
+		// anchor = the single faction allowed to front a coalition this tick.
+		com.fs.starfarer.api.campaign.CampaignFleetAPI playerFleet =
+				Global.getSector().getPlayerFleet();
+		sb.append("\n  playerScore=").append((int) MilitaryScore.playerScore())
+				.append(" playerFleetStr=").append(
+						(int) (playerFleet != null ? playerFleet.getEffectiveStrength() : 0f))
+				.append(" blocAnchor=").append(tickBlocAnchor)
+				.append(" demoralized=[").append(CoalitionCalc.describeDemoralized()).append("]");
+		for (GrievanceEventIntel g : active.values()) {
+			sb.append("\n  ").append(g.getFactionId())
+					.append(": progress=").append((int) g.getProgress())
+					.append(" fieldable=").append((int) CoalitionCalc.fieldable(g.getFaction()))
+					.append(" needed=").append((int) EnforcementStrike.neededFor(g))
+					.append(" soloCapable=").append(CoalitionCalc.canPressSolo(g))
+					.append(" emboldened=").append(g.isEmboldened())
+					.append(" coalitionBacked=").append(g.isCoalitionBacked())
+					.append(" partners=").append(g.getCoalitionPartners())
+					.append(" backing=").append(g.getBackedFactions())
+					.append(" supportingStrikeFor=").append(g.getSupportingStrikeFor())
+					.append(" strikeActive=").append(g.isStrikeActive())
+					.append(" commission=").append(g.isCommissionSuppressed())
+					.append(" vanillaCrisis=").append(g.isDeferredToVanillaCrisis())
+					.append(" truce=").append(g.isInTruce())
+					.append(" vendetta=").append(g.isVendetta())
+					.append(" -> paused=").append(g.isPaused())
+					.append(" dormant=").append(g.isDormant())
+					.append(" hidden=").append(g.isHidden());
 		}
 		CommWarsConfig.log(sb.toString());
 	}
